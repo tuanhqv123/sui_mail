@@ -2,7 +2,11 @@ import { Inbox, Send, Settings, LogOut, Pencil } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useAuthStore } from "../store/useStore";
 
-const Sidebar = () => {
+interface SidebarProps {
+  onItemClick?: () => void;
+}
+
+const Sidebar = ({ onItemClick }: SidebarProps) => {
   const logout = useAuthStore((state) => state.logout);
 
   const navItems = [
@@ -26,6 +30,7 @@ const Sidebar = () => {
           <NavLink
             key={item.to}
             to={item.to}
+            onClick={onItemClick}
             className={({ isActive }) =>
               `flex items-center gap-3 px-4 py-3 rounded-full transition-all duration-200 ${
                 isActive
@@ -42,7 +47,10 @@ const Sidebar = () => {
 
       <div className="mt-auto pt-4">
         <button
-          onClick={logout}
+          onClick={() => {
+            logout();
+            if (onItemClick) onItemClick();
+          }}
           className="w-full bg-white flex items-center gap-3 px-4 py-3 rounded-full text-black hover:bg-hover hover:text-red-600 transition-colors"
         >
           <LogOut size={20} />
