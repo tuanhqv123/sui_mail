@@ -43,7 +43,6 @@ public struct UserProfile has key {
 public struct BlacklistEntry has copy, drop, store {
     blocked: bool,
     blocked_at: u64,
-    reason: String,
 }
 
 public struct Allowlist has key {
@@ -94,7 +93,6 @@ public struct UserBlacklisted has copy, drop {
     profile_id: object::ID,
     blocker: address,
     blocked_user: address,
-    reason: String,
 }
 
 public struct UserUnblacklisted has copy, drop {
@@ -183,11 +181,9 @@ entry fun create_profile_entry(ctx: &mut tx_context::TxContext) {
 public fun add_to_blacklist(
     profile: &mut UserProfile,
     blocked_user: address,
-    reason: String,
     ctx: &mut tx_context::TxContext,
 ) {
     assert!(profile.owner == tx_context::sender(ctx), ENotOwner);
-    assert!(string::length(&reason) <= MAX_STRING_LENGTH, EStringTooLong);
     assert!(!df::exists_with_type<address, BlacklistEntry>(&profile.id, blocked_user), EDuplicate);
 
     df::add(
@@ -196,7 +192,6 @@ public fun add_to_blacklist(
         BlacklistEntry {
             blocked: true,
             blocked_at: tx_context::epoch(ctx),
-            reason,
         },
     );
 
@@ -206,17 +201,15 @@ public fun add_to_blacklist(
         profile_id: object::id(profile),
         blocker: profile.owner,
         blocked_user,
-        reason: reason,
     });
 }
 
 entry fun add_to_blacklist_entry(
     profile: &mut UserProfile,
     blocked_user: address,
-    reason: String,
     ctx: &mut tx_context::TxContext,
 ) {
-    add_to_blacklist(profile, blocked_user, reason, ctx);
+    add_to_blacklist(profile, blocked_user, ctx);
 }
 
 public fun remove_from_blacklist(
