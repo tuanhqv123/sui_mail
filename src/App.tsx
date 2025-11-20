@@ -14,7 +14,6 @@ import Settings from "./pages/Settings";
 import Compose from "./pages/Compose";
 import Sidebar from "./components/Sidebar";
 import { useAuthStore } from "./store/useStore";
-import Button from "./components/Button";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -63,7 +62,7 @@ const Layout = () => {
             <Sidebar onItemClick={() => setIsMobileMenuOpen(false)} />
           </div>
         </div>
-      )}}
+      )}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-40 md:hidden">
           <div
