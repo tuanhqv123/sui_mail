@@ -93,19 +93,10 @@ const Sent = () => {
     }
   };
 
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      // Could add a toast notification here
-    } catch (error) {
-      console.error("Failed to copy to clipboard:", error);
-    }
-  };
-
   const downloadAttachment = async (attachment: any) => {
     try {
       const data = await walrusService.downloadBlob(attachment.blobId);
-      const blob = new Blob([data], { type: attachment.type });
+      const blob = new Blob([data as BlobPart], { type: attachment.type });
       const url = URL.createObjectURL(blob);
 
       const a = document.createElement("a");
@@ -196,6 +187,7 @@ const Sent = () => {
               blobId: fields.blob_id,
               body: mailContent.body,
               attachments: mailContent.attachments,
+              recipients: mailContent.recipients || [],
             });
           } catch (error) {
             // Skip mails with expired/corrupted Walrus blobs
@@ -261,93 +253,91 @@ const Sent = () => {
   if (selectedEmail) {
     return (
       <div className="p-8 h-full flex flex-col relative">
-        <button
-          onClick={() => setSelectedEmail(null)}
-          className="mb-6 p-2 hover:bg-black/5 rounded-full w-fit transition-colors"
-        >
-          <ArrowLeft size={24} className="text-black" />
-        </button>
-
-        <div className="flex-1 overflow-y-auto pr-2">
-          <div className="flex justify-between items-start mb-4 border-b border-black/5">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 bg-secondary rounded-full flex items-center justify-center text-black font-bold">
-                  YOU
-                </div>
-                <div>
-                  <h2 className="text-normal font-bold text-black">
-                    {selectedEmail.subject}
-                  </h2>
-                  <div className="text-sm text-black">
-                    From:{" "}
-                    {currentAccount
-                      ? `${currentAccount.address.slice(
-                          0,
-                          6
-                        )}...${currentAccount.address.slice(-4)}`
-                      : "Unknown"}
-                  </div>
-                </div>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setSelectedEmail(null)}
+            className="p-2 hover:bg-black/5 rounded-full transition-colors"
+          >
+            <ArrowLeft size={24} className="text-black" />
+          </button>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-secondary rounded-full flex items-center justify-center text-black font-bold">
+              YOU
+            </div>
+            <div>
+              <h3 className="text-normal font-bold text-black">
+                {selectedEmail.subject}
+              </h3>
+              <div className="text-sm text-gray-600">
+                From:{" "}
+                {currentAccount
+                  ? `${currentAccount.address.slice(
+                      0,
+                      6
+                    )}...${currentAccount.address.slice(-4)}`
+                  : "Unknown"}
               </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 text-sm text-gray-500 ml-auto">
+            <span>{selectedEmail.time}</span>
+          </div>
+        </div>
 
-              {selectedEmail.recipients &&
-                selectedEmail.recipients.length > 0 && (
-                  <div className="ml-13 space-y-2">
-                    <div className="text-sm font-medium text-gray-700">
-                      Recipients:
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedEmail.recipients.map(
-                        (recipient: string, index: number) => {
-                          const suinsName = recipientNames.get(recipient);
-                          return (
-                            <div
-                              key={index}
-                              className="inline-flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 cursor-pointer transition-colors"
-                              onClick={() => copyToClipboard(recipient)}
-                              title="Click to copy address"
-                            >
-                              <Users size={14} className="text-gray-400" />
-                              <span className="text-sm text-gray-700 font-medium">
-                                {suinsName ? (
-                                  <>
-                                    <span className="text-blue-600">
-                                      {suinsName}
-                                    </span>
-                                    <span className="text-gray-500">
-                                      ({recipient.slice(0, 6)}...
-                                      {recipient.slice(-4)})
-                                    </span>
-                                  </>
-                                ) : (
-                                  `${recipient.slice(0, 6)}...${recipient.slice(
-                                    -4
-                                  )}`
-                                )}
-                              </span>
-                              <Copy size={12} className="text-gray-400" />
-                            </div>
-                          );
-                        }
-                      )}
-                    </div>
+        <div className="flex-1 overflow-y-auto">
+          <div className="mb-2 pb-2 border-b border-gray-200">
+            {selectedEmail.recipients &&
+              selectedEmail.recipients.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-gray-700">
+                    Recipients:
                   </div>
-                )}
-            </div>
-
-            <div className="flex items-center gap-1 text-sm text-gray-500 ml-auto">
-              <Clock size={14} />
-              <span>{selectedEmail.time}</span>
-            </div>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedEmail.recipients.map(
+                      (recipient: string, index: number) => {
+                        const suinsName = recipientNames.get(recipient);
+                        return (
+                          <div
+                            key={index}
+                            className="inline-flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 cursor-pointer transition-colors"
+                          >
+                            <span className="text-sm text-gray-700 font-medium">
+                              {suinsName ? (
+                                <>
+                                  <span className="text-blue-600">
+                                    {suinsName}
+                                  </span>
+                                  <span className="text-gray-500">
+                                    ({recipient.slice(0, 6)}
+                                    ...
+                                    {recipient.slice(-4)})
+                                  </span>
+                                </>
+                              ) : (
+                                `${recipient.slice(0, 6)}...${recipient.slice(
+                                  -4
+                                )}`
+                              )}
+                            </span>
+                          </div>
+                        );
+                      }
+                    )}
+                  </div>
+                </div>
+              )}
           </div>
 
           {/* Mail content */}
-          <div className="bg-white border border-gray-200 rounded-lg mb-8">
-            <div
-              className="ql-editor p-0 text-black leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: selectedEmail.body }}
-            />
+          <div className="bg-white border border-gray-200 rounded mb-4">
+            <div className="ql-snow">
+              <div
+                className="ql-editor p-0 text-black leading-relaxed"
+                dangerouslySetInnerHTML={{
+                  __html: selectedEmail.body,
+                }}
+              />
+            </div>
           </div>
 
           {/* Attachments */}
@@ -447,11 +437,6 @@ const Sent = () => {
                           <span
                             key={index}
                             className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-md text-xs text-gray-700 hover:bg-gray-200 cursor-pointer"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              copyToClipboard(recipient);
-                            }}
-                            title="Click to copy address"
                           >
                             {formatAddress(recipient, suinsName)}
                             <Copy

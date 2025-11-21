@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { ArrowLeft, Reply, FileText, Download, Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import "react-quill/dist/quill.snow.css";
 import Button from "../components/Button";
 import {
@@ -38,6 +39,7 @@ const Inbox = () => {
   const currentAccount = useCurrentAccount();
   const suiClient = useSuiClient();
   const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
+  const navigate = useNavigate();
 
   // Memoize service instances to prevent recreation on every render
   const suiMailService = useMemo(
@@ -89,7 +91,7 @@ const Inbox = () => {
   const downloadAttachment = async (attachment: any) => {
     try {
       const data = await walrusService.downloadBlob(attachment.blobId);
-      const blob = new Blob([data], { type: attachment.type });
+      const blob = new Blob([data as BlobPart], { type: attachment.type });
       const url = URL.createObjectURL(blob);
 
       const a = document.createElement("a");
@@ -102,6 +104,20 @@ const Inbox = () => {
     } catch (error) {
       console.error("Failed to download attachment:", error);
       alert("Failed to download attachment. Please try again.");
+    }
+  };
+
+  const handleReply = () => {
+    if (selectedEmail) {
+      navigate("/compose", {
+        state: {
+          replyTo: selectedEmail.sender,
+          replySubject: selectedEmail.subject.startsWith("Re: ")
+            ? selectedEmail.subject
+            : `Re: ${selectedEmail.subject}`,
+          parentMailId: selectedEmail.id,
+        },
+      });
     }
   };
 
@@ -222,36 +238,40 @@ const Inbox = () => {
   if (selectedEmail) {
     return (
       <div className="p-8 h-full flex flex-col relative">
-        <button
-          onClick={() => setSelectedEmail(null)}
-          className="mb-6 p-2 hover:bg-black/5 rounded-full w-fit transition-colors"
-        >
-          <ArrowLeft size={24} className="text-black" />
-        </button>
+        <div className="flex items-center gap-4 mb-6">
+          <button
+            onClick={() => setSelectedEmail(null)}
+            className="p-2 hover:bg-black/5 rounded-full transition-colors"
+          >
+            <ArrowLeft size={24} className="text-black" />
+          </button>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-secondary rounded-full flex items-center justify-center text-black font-bold">
+              {selectedEmail.sender[0].toUpperCase()}
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-black">
+                {selectedEmail.subject}
+              </h2>
+              <div className="text-sm text-gray-600">
+                From: {selectedEmail.sender.slice(0, 6)}...
+                {selectedEmail.sender.slice(-4)}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 text-sm text-gray-500 ml-auto">
+            <span>{selectedEmail.time}</span>
+          </div>
+        </div>
 
         <div className="flex-1 overflow-y-auto pr-2">
-          <h1 className="text-3xl font-bold text-black mb-6">
-            {selectedEmail.subject}
-          </h1>
-
-          <div className="flex justify-between items-center mb-8 pb-4 border-b border-black/5">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-secondary rounded-full flex items-center justify-center text-black font-bold">
-                {selectedEmail.sender[0]}
-              </div>
-              <span className="font-semibold text-black text-lg">
-                {selectedEmail.sender.slice(0, 6)}...
-                {selectedEmail.sender.slice(-4)}
-              </span>
+          <div className="bg-white border border-gray-200 rounded mb-4">
+            <div className="ql-snow">
+              <div
+                className="ql-editor p-0 text-black leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: selectedEmail.body }}
+              />
             </div>
-            <span className="text-black/60">{selectedEmail.time}</span>
-          </div>
-
-          <div className="bg-white border border-gray-200 rounded-lg p-2 mb-8">
-            <div
-              className="ql-editor p-0 text-black leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: selectedEmail.body }}
-            />
           </div>
 
           {selectedEmail.attachments &&
@@ -293,7 +313,7 @@ const Inbox = () => {
         </div>
 
         <div className="absolute bottom-8 right-8">
-          <Button variant="outline">
+          <Button variant="outline" onClick={handleReply}>
             <Reply size={20} />
             <span className="font-medium">Reply</span>
           </Button>

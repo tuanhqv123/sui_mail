@@ -1,4 +1,5 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import Button from "../components/Button";
@@ -26,7 +27,16 @@ import {
   type EncryptedMailContent,
 } from "../utils/encryption";
 
+interface LocationState {
+  replyTo?: string;
+  replySubject?: string;
+  parentMailId?: string;
+}
+
 const Compose = () => {
+  const location = useLocation();
+  const locationState = location.state as LocationState | null;
+
   const [recipients, setRecipients] = useState<string[]>([]);
   const [recipientInput, setRecipientInput] = useState("");
   const [subject, setSubject] = useState("");
@@ -34,12 +44,28 @@ const Compose = () => {
   const [attachments, setAttachments] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [parentMailId, setParentMailId] = useState<string | undefined>(
+    undefined
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const quillRef = useRef<ReactQuill>(null);
 
   const currentAccount = useCurrentAccount();
   const suiClient = useSuiClient();
   const { mutate: signAndExecute } = useSignAndExecuteTransaction();
+
+  // Handle reply prefill
+  useEffect(() => {
+    if (locationState?.replyTo) {
+      setRecipients([locationState.replyTo]);
+    }
+    if (locationState?.replySubject) {
+      setSubject(locationState.replySubject);
+    }
+    if (locationState?.parentMailId) {
+      setParentMailId(locationState.parentMailId);
+    }
+  }, [locationState]);
 
   // Create SuiJsonRpcClient for Seal SDK
   const sealClient = useMemo(
@@ -79,9 +105,7 @@ const Compose = () => {
     setRecipients(recipients.filter((r) => r !== address));
   };
 
-  const handleRecipientKeyDown = (
-    e: React.KeyboardEvent<HTMLInputElement>
-  ) => {
+  const handleRecipientKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
       handleAddRecipient();
@@ -225,10 +249,12 @@ const Compose = () => {
       );
 
       if (blocked.length > 0) {
-        const blockedList = blocked.map(b =>
-          `${b.recipient.slice(0, 6)}...${b.recipient.slice(-4)}`
-        ).join(", ");
-        alert(`Cannot send mail to the following recipients:\n${blockedList}\n\nReason: ${blocked[0].reason}`);
+        const blockedList = blocked
+          .map((b) => `${b.recipient.slice(0, 6)}...${b.recipient.slice(-4)}`)
+          .join(", ");
+        alert(
+          `Cannot send mail to the following recipients:\n${blockedList}\n\nReason: ${blocked[0].reason}`
+        );
         return;
       }
 
@@ -238,7 +264,7 @@ const Compose = () => {
       }
 
       // Step 4: Combine mail content with valid recipients
-      let htmlContent = content || '';
+      let htmlContent = content || "";
 
       // Get HTML content from Quill editor
       if (quillRef.current) {
