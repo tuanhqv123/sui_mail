@@ -366,6 +366,45 @@ public fun is_member(allowlist: &Allowlist, user: address): bool {
     df::exists_with_type<address, MemberEntry>(&allowlist.id, user)
 }
 
+// Add member by address (no profile required)
+public fun add_member_by_address(
+    allowlist: &mut Allowlist,
+    cap: &Cap,
+    member: address,
+    ctx: &tx_context::TxContext,
+) {
+    assert!(cap.allowlist_id == object::id(allowlist), EInvalidCap);
+    assert!(!df::exists_with_type<address, MemberEntry>(&allowlist.id, member), EDuplicate);
+
+    df::add(
+        &mut allowlist.id,
+        member,
+        MemberEntry {
+            is_allowed: true,
+            added_at: tx_context::epoch(ctx),
+            added_by: allowlist.owner,
+        },
+    );
+
+    allowlist.member_count = allowlist.member_count + 1;
+    allowlist.updated_at = tx_context::epoch(ctx);
+
+    event::emit(MemberAdded {
+        allowlist_id: object::id(allowlist),
+        member,
+        added_by: allowlist.owner,
+    });
+}
+
+entry fun add_member_by_address_entry(
+    allowlist: &mut Allowlist,
+    cap: &Cap,
+    member: address,
+    ctx: &tx_context::TxContext,
+) {
+    add_member_by_address(allowlist, cap, member, ctx);
+}
+
 // ===== 3. MAIL =====
 
 public fun create_mail(

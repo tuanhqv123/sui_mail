@@ -1,6 +1,11 @@
-import { Inbox, Send, Settings, LogOut, Pencil } from "lucide-react";
+import { Inbox, Send, Settings, Pencil } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useAuthStore } from "../store/useStore";
+import {
+  useCurrentAccount,
+  useDisconnectWallet,
+  useResolveSuiNSName,
+} from "@mysten/dapp-kit";
 
 interface SidebarProps {
   onItemClick?: () => void;
@@ -8,6 +13,8 @@ interface SidebarProps {
 
 const Sidebar = ({ onItemClick }: SidebarProps) => {
   const logout = useAuthStore((state) => state.logout);
+  const currentAccount = useCurrentAccount();
+  const { mutate: disconnect } = useDisconnectWallet();
 
   const navItems = [
     { to: "/compose", icon: Pencil, label: "Compose" },
@@ -15,6 +22,12 @@ const Sidebar = ({ onItemClick }: SidebarProps) => {
     { to: "/sent", icon: Send, label: "Sent" },
     { to: "/settings", icon: Settings, label: "Settings" },
   ];
+
+  const handleDisconnect = () => {
+    disconnect();
+    logout();
+    if (onItemClick) onItemClick();
+  };
 
   return (
     <div className="w-64 h-full bg-primary rounded-[2rem] flex flex-col py-6 px-6 shadow-sm">
@@ -46,19 +59,36 @@ const Sidebar = ({ onItemClick }: SidebarProps) => {
       </nav>
 
       <div className="mt-auto pt-4">
-        <button
-          onClick={() => {
-            logout();
-            if (onItemClick) onItemClick();
-          }}
-          className="w-full bg-white flex items-center gap-3 px-4 py-3 rounded-full text-black hover:bg-hover hover:text-red-600 transition-colors"
-        >
-          <LogOut size={20} />
-          <span className="font-medium">Logout</span>
-        </button>
+        {currentAccount && (
+          <button
+            onClick={handleDisconnect}
+            className="w-full bg-white flex items-center justify-center px-4 py-3 rounded-full text-black hover:bg-hover hover:text-red-600 transition-colors"
+          >
+            <SidebarAccountDisplay address={currentAccount.address} />
+          </button>
+        )}
       </div>
     </div>
   );
 };
+
+function SidebarAccountDisplay({ address }: { address: string }) {
+  const { data, isPending } = useResolveSuiNSName(address);
+
+  if (isPending) {
+    return <span className="font-medium text-sm">Loading...</span>;
+  }
+
+  if (data) {
+    return <span className="font-medium text-sm">{data}</span>;
+  }
+
+  return (
+    <span className="font-medium text-sm">{`${address.slice(
+      0,
+      6
+    )}...${address.slice(-4)}`}</span>
+  );
+}
 
 export default Sidebar;
