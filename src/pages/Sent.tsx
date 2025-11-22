@@ -248,7 +248,6 @@ const Sent = () => {
             parsedMails.push({
               id: mailObj.data.objectId,
               subject: fields.subject || "[Encrypted Mail]",
-              preview: "Encrypted mail content",
               time: fallbackTimestamp,
               blobId: fields.blob_id,
               body: "<p>🔒 This mail is encrypted. Please initialize decryption to view the content.</p>",

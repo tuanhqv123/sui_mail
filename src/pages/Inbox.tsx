@@ -451,7 +451,6 @@ const Inbox = () => {
               id: mailId,
               sender: fields.sender,
               subject: fields.subject || "[Encrypted Mail]",
-              preview: "Encrypted mail content",
               body: "<p>🔒 This mail is encrypted. Please initialize decryption to view the content.</p>",
               time: fallbackTimestamp,
               unread: false,
@@ -772,9 +771,6 @@ const Inbox = () => {
               >
                 From: {email.sender.slice(0, 6)}...{email.sender.slice(-4)}
               </h4>
-              <p className="text-sm text-gray-500 line-clamp-1">
-                {email.preview}
-              </p>
             </div>
           ))}
         </div>
