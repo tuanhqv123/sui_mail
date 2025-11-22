@@ -32,7 +32,6 @@ interface Email {
   id: string;
   sender: string;
   subject: string;
-  preview: string;
   body: string;
   time: string;
   unread: boolean;
@@ -40,6 +39,9 @@ interface Email {
   blobId: string;
   parentMailId?: string;
   recipients?: string[];
+  allowlistId?: string; // For lazy decryption
+  isDecrypted?: boolean; // Track if content is decrypted
+  isEncrypted?: boolean; // Track if mail is encrypted
 }
 
 const Inbox = () => {
@@ -130,6 +132,57 @@ const Inbox = () => {
       alert("Failed to initialize decryption session. Please try again.");
     } finally {
       setInitializingSession(false);
+    }
+  };
+
+  // Decrypt mail content when user clicks on it
+  const decryptAndLoadMail = async (email: Email): Promise<Email> => {
+    // If already decrypted, return as is
+    if (email.isDecrypted) {
+      return email;
+    }
+
+    console.log("🔓 Decrypting mail on demand:", email.id);
+
+    try {
+      let mailContent;
+
+      // Try to decrypt if encrypted
+      if (email.isEncrypted && email.allowlistId && sessionInitialized) {
+        try {
+          mailContent = await decryptionService.decryptMail(
+            email.blobId,
+            email.allowlistId
+          );
+          console.log("✅ Mail decrypted successfully");
+        } catch (decryptError) {
+          console.warn("⚠️ Decryption failed, trying plain download:", decryptError);
+          mailContent = await walrusService.downloadBlobAsJson(email.blobId);
+        }
+      } else {
+        // Not encrypted or no session - plain download
+        mailContent = await walrusService.downloadBlobAsJson(email.blobId);
+      }
+
+      // Update email with decrypted content
+      const updatedEmail: Email = {
+        ...email,
+        subject: mailContent.subject || email.subject,
+        body: mailContent.body || "",
+        attachments: mailContent.attachments || [],
+        isDecrypted: true,
+      };
+
+      // Update in state
+      setEmails(prevEmails => 
+        prevEmails.map(e => e.id === email.id ? updatedEmail : e)
+      );
+
+      return updatedEmail;
+    } catch (error) {
+      console.error("Failed to decrypt mail:", error);
+      alert("Failed to load mail content. The blob may have expired.");
+      return email;
     }
   };
 
@@ -340,61 +393,37 @@ const Inbox = () => {
 
             console.log("📧 Processing mail:", {
               blobId: fields.blob_id,
-              sessionInitialized,
               hasAllowlist: !!fields.allowlist_id,
               allowlistId: fields.allowlist_id,
             });
 
-            // Try to decrypt mail if session is initialized
-            if (sessionInitialized && fields.allowlist_id) {
-              try {
-                console.log("🔓 Attempting decryption for:", fields.blob_id);
-                mailContent = await decryptionService.decryptMail(
-                  fields.blob_id,
-                  fields.allowlist_id
-                );
-                console.log("✅ Mail decrypted successfully:", fields.blob_id);
-              } catch (decryptError) {
-                console.warn(
-                  "⚠️ Decryption failed, trying plain download:",
-                  decryptError
-                );
-                // Fallback to plain download if decryption fails
-                mailContent = await walrusService.downloadBlobAsJson(
-                  fields.blob_id
-                );
-              }
-            } else {
-              // No session or no allowlist - try plain download
-              mailContent = await walrusService.downloadBlobAsJson(
-                fields.blob_id
-              );
-            }
-
-            // Format timestamp - mailContent.timestamp is ISO string from encryption
-            const mailTimestamp = mailContent.timestamp || fields.timestamp;
+            // DON'T decrypt on initial load - just store metadata for lazy loading
+            const isEncrypted = !!fields.allowlist_id;
+            
+            // Format timestamp
             const timestamp = new Date(
-              typeof mailTimestamp === "string"
-                ? mailTimestamp
-                : parseInt(mailTimestamp)
+              typeof fields.timestamp === "string"
+                ? fields.timestamp
+                : parseInt(fields.timestamp)
             ).toLocaleString();
 
             // Check if this mail is a reply to another mail
             const parentMailId = mailThreading.get(mailId);
 
+            // Store mail with minimal info - decrypt only when clicked
             parsedEmails.push({
               id: mailId,
               sender: fields.sender,
-              subject: fields.subject || mailContent.subject,
-              preview: mailContent.body
-                .replace(/<[^>]*>/g, "")
-                .substring(0, 100),
-              body: mailContent.body,
+              subject: fields.subject || "Encrypted Mail",
+              body: "", // Will be loaded on click
               time: timestamp,
               unread: false,
-              attachments: mailContent.attachments,
+              attachments: [],
               blobId: fields.blob_id,
+              allowlistId: fields.allowlist_id || undefined,
               parentMailId,
+              isDecrypted: false,
+              isEncrypted,
             });
           } catch (error) {
             // Skip mails with expired/corrupted Walrus blobs
@@ -721,10 +750,12 @@ const Inbox = () => {
           {emails.map((email) => (
             <div
               key={email.id}
-              onClick={() => {
-              setSelectedEmail(email);
+              onClick={async () => {
+              // Decrypt mail on demand before showing
+              const decryptedEmail = await decryptAndLoadMail(email);
+              setSelectedEmail(decryptedEmail);
               // Make selected email available to chat assistant
-              (window as any).selectedEmail = email;
+              (window as any).selectedEmail = decryptedEmail;
             }}
               className={`p-4 rounded-2xl border border-gray hover:bg-muted cursor-pointer transition-colors group ${
                 email.unread ? "bg-muted/85" : "bg-gray"

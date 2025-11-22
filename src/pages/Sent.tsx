@@ -25,12 +25,14 @@ import { useSuiNs } from "../hooks/useSuiNs";
 interface SentMail {
   id: string;
   subject: string;
-  preview: string;
   time: string;
   blobId: string;
   body?: string;
   attachments?: any[];
   recipients?: string[];
+  allowlistId?: string;
+  isDecrypted?: boolean;
+  isEncrypted?: boolean;
 }
 
 const Sent = () => {
@@ -102,6 +104,52 @@ const Sent = () => {
     }
   };
 
+  // Decrypt mail content when user clicks on it
+  const decryptAndLoadMail = async (email: SentMail): Promise<SentMail> => {
+    if (email.isDecrypted) {
+      return email;
+    }
+
+    console.log("🔓 Decrypting sent mail on demand:", email.id);
+
+    try {
+      let mailContent;
+
+      if (email.isEncrypted && email.allowlistId && sessionInitialized) {
+        try {
+          mailContent = await decryptionService.decryptMail(
+            email.blobId,
+            email.allowlistId
+          );
+          console.log("✅ Sent mail decrypted successfully");
+        } catch (decryptError) {
+          console.warn("⚠️ Decryption failed, trying plain download:", decryptError);
+          mailContent = await walrusService.downloadBlobAsJson(email.blobId);
+        }
+      } else {
+        mailContent = await walrusService.downloadBlobAsJson(email.blobId);
+      }
+
+      const updatedEmail: SentMail = {
+        ...email,
+        subject: mailContent.subject || email.subject,
+        body: mailContent.body || "",
+        attachments: mailContent.attachments || [],
+        isDecrypted: true,
+      };
+
+      setSentMails(prevMails => 
+        prevMails.map(m => m.id === email.id ? updatedEmail : m)
+      );
+
+      return updatedEmail;
+    } catch (error) {
+      console.error("Failed to decrypt sent mail:", error);
+      alert("Failed to load mail content. The blob may have expired.");
+      return email;
+    }
+  };
+
   const downloadAttachment = async (attachment: any) => {
     try {
       const data = await walrusService.downloadBlob(attachment.blobId);
@@ -150,66 +198,33 @@ const Sent = () => {
           const fields = mailObj.data.content.fields as any;
 
           try {
-            let mailContent: MailContent;
+            // DON'T decrypt on initial load - just store metadata
+            const isEncrypted = !!fields.allowlist_id;
 
-            // Try to decrypt mail if session is initialized
-            if (sessionInitialized && fields.allowlist_id) {
-              try {
-                mailContent = await decryptionService.decryptMail(
-                  fields.blob_id,
-                  fields.allowlist_id
-                );
-              } catch (decryptError) {
-                console.warn(
-                  "⚠️ Decryption failed, trying plain download:",
-                  decryptError
-                );
-                // Fallback to plain download if decryption fails
-                mailContent = await walrusService.downloadBlobAsJson(
-                  fields.blob_id
-                );
-              }
-            } else {
-              // No session or no allowlist - try plain download
-              mailContent = await walrusService.downloadBlobAsJson(
-                fields.blob_id
-              );
-            }
-
-            // Format timestamp - use mailContent timestamp (when mail was created) over blockchain timestamp
+            // Format timestamp from blockchain
             let timestamp = "";
             try {
-              // Prefer the timestamp from the mail content (when it was composed)
-              if (mailContent.timestamp) {
-                timestamp = new Date(mailContent.timestamp).toLocaleString();
+              const timestampNum = parseInt(fields.timestamp);
+              if (!isNaN(timestampNum) && timestampNum > 0) {
+                timestamp = new Date(timestampNum).toLocaleString();
               } else {
-                // Fallback to blockchain timestamp
-                const timestampNum = parseInt(fields.timestamp);
-                if (!isNaN(timestampNum) && timestampNum > 0) {
-                  timestamp = new Date(timestampNum).toLocaleString();
-                } else {
-                  timestamp = new Date().toLocaleString();
-                }
+                timestamp = new Date().toLocaleString();
               }
             } catch (error) {
-              console.warn("Invalid timestamp:", {
-                mailTimestamp: mailContent.timestamp,
-                blockchainTimestamp: fields.timestamp,
-              });
               timestamp = new Date().toLocaleString();
             }
 
             parsedMails.push({
               id: mailObj.data.objectId,
-              subject: fields.subject || mailContent.subject,
-              preview: mailContent.body
-                .replace(/<[^>]*>/g, "")
-                .substring(0, 100),
+              subject: fields.subject || "Encrypted Mail",
               time: timestamp,
               blobId: fields.blob_id,
-              body: mailContent.body,
-              attachments: mailContent.attachments,
-              recipients: mailContent.recipients || [],
+              body: "",
+              attachments: [],
+              recipients: [],
+              allowlistId: fields.allowlist_id || undefined,
+              isDecrypted: false,
+              isEncrypted,
             });
           } catch (error) {
             // Skip mails with expired/corrupted Walrus blobs
@@ -458,10 +473,12 @@ const Sent = () => {
           {sentMails.map((mail) => (
             <div
               key={mail.id}
-              onClick={() => {
-              setSelectedEmail(mail);
+              onClick={async () => {
+              // Decrypt mail on demand before showing
+              const decryptedMail = await decryptAndLoadMail(mail);
+              setSelectedEmail(decryptedMail);
               // Make selected email available to chat assistant
-              (window as any).selectedEmail = mail;
+              (window as any).selectedEmail = decryptedMail;
             }}
               className="p-4 rounded-2xl border border-gray hover:bg-muted cursor-pointer transition-colors"
             >
