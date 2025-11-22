@@ -44,6 +44,30 @@ interface Email {
   isEncrypted?: boolean; // Track if mail is encrypted
 }
 
+// Helper function to format timestamp from mail content (ISO string)
+const formatTimestamp = (timestamp: string | number): string => {
+  try {
+    // Mail content has ISO string timestamp like "2024-11-22T10:30:00.000Z"
+    const date = new Date(timestamp);
+
+    if (isNaN(date.getTime())) {
+      return "Just now";
+    }
+
+    // Format as: "Nov 22, 2025, 10:30 AM"
+    return date.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  } catch (error) {
+    return "Just now";
+  }
+};
+
 const Inbox = () => {
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [emails, setEmails] = useState<Email[]>([]);
@@ -156,7 +180,10 @@ const Inbox = () => {
           );
           console.log("✅ Mail decrypted successfully");
         } catch (decryptError) {
-          console.warn("⚠️ Decryption failed, trying plain download:", decryptError);
+          console.warn(
+            "⚠️ Decryption failed, trying plain download:",
+            decryptError
+          );
           mailContent = await walrusService.downloadBlobAsJson(email.blobId);
         }
       } else {
@@ -165,17 +192,22 @@ const Inbox = () => {
       }
 
       // Update email with decrypted content
+      const timestamp = mailContent.timestamp
+        ? formatTimestamp(mailContent.timestamp)
+        : email.time;
+
       const updatedEmail: Email = {
         ...email,
         subject: mailContent.subject || email.subject,
         body: mailContent.body || "",
         attachments: mailContent.attachments || [],
+        time: timestamp,
         isDecrypted: true,
       };
 
       // Update in state
-      setEmails(prevEmails => 
-        prevEmails.map(e => e.id === email.id ? updatedEmail : e)
+      setEmails((prevEmails) =>
+        prevEmails.map((e) => (e.id === email.id ? updatedEmail : e))
       );
 
       return updatedEmail;
@@ -349,35 +381,60 @@ const Inbox = () => {
 
       // Log all threading relationships
       mailThreading.forEach((parentMailId, replyMailId) => {
-        console.log(`🔗 Threading: Reply ${replyMailId} -> Parent ${parentMailId}`);
+        console.log(
+          `🔗 Threading: Reply ${replyMailId} -> Parent ${parentMailId}`
+        );
       });
 
       // Specifically check for the reply we know about
-      const targetReplyId = "0x43c6d3f04f2ee2563b8c4e0883b926c0e4e05530039297f9f376a5fbf840b9fb";
-      const targetReplyFound = mailObjects.some(mail => mail.data?.objectId === targetReplyId);
+      const targetReplyId =
+        "0x43c6d3f04f2ee2563b8c4e0883b926c0e4e05530039297f9f376a5fbf840b9fb";
+      const targetReplyFound = mailObjects.some(
+        (mail) => mail.data?.objectId === targetReplyId
+      );
       const targetReplyParent = mailThreading.get(targetReplyId);
 
       console.log(`🎯 TARGET REPLY ANALYSIS for ${targetReplyId}:`);
       console.log(`   Found in received mails: ${targetReplyFound}`);
-      console.log(`   Parent mail ID: ${targetReplyParent || 'NOT FOUND'}`);
-      console.log(`   Threading working: ${targetReplyFound && targetReplyParent ? 'YES' : 'NO'}`);
+      console.log(`   Parent mail ID: ${targetReplyParent || "NOT FOUND"}`);
+      console.log(
+        `   Threading working: ${
+          targetReplyFound && targetReplyParent ? "YES" : "NO"
+        }`
+      );
 
       // Also check for 0xc2fd95 (the reply you clicked)
-      const clickedReplyId = "0xc2fd95b4635e017f91c0042b1a55299fc486b8324346cf9dec2ac12063615329";
-      const clickedReplyFound = mailObjects.some(mail => mail.data?.objectId === clickedReplyId);
+      const clickedReplyId =
+        "0xc2fd95b4635e017f91c0042b1a55299fc486b8324346cf9dec2ac12063615329";
+      const clickedReplyFound = mailObjects.some(
+        (mail) => mail.data?.objectId === clickedReplyId
+      );
       const clickedReplyParent = mailThreading.get(clickedReplyId);
 
       console.log(`🎯 CLICKED REPLY ANALYSIS for ${clickedReplyId}:`);
       console.log(`   Found in received mails: ${clickedReplyFound}`);
-      console.log(`   Parent mail ID: ${clickedReplyParent || 'NOT FOUND'}`);
-      console.log(`   Parent matches target: ${clickedReplyParent === targetReplyId ? 'YES' : 'NO'}`);
-      console.log(`   Threading working: ${clickedReplyFound && clickedReplyParent ? 'YES' : 'NO'}`);
+      console.log(`   Parent mail ID: ${clickedReplyParent || "NOT FOUND"}`);
+      console.log(
+        `   Parent matches target: ${
+          clickedReplyParent === targetReplyId ? "YES" : "NO"
+        }`
+      );
+      console.log(
+        `   Threading working: ${
+          clickedReplyFound && clickedReplyParent ? "YES" : "NO"
+        }`
+      );
 
       // Check for any new replies after our last test
       console.log(`📋 ALL REPLY THREADING RELATIONSHIPS:`);
       mailThreading.forEach((parentMailId, replyMailId) => {
-        if (replyMailId.includes('0xc2fd95') || parentMailId.includes('0x43c6d3f')) {
-          console.log(`   Related: Reply ${replyMailId} -> Parent ${parentMailId}`);
+        if (
+          replyMailId.includes("0xc2fd95") ||
+          parentMailId.includes("0x43c6d3f")
+        ) {
+          console.log(
+            `   Related: Reply ${replyMailId} -> Parent ${parentMailId}`
+          );
         }
       });
 
@@ -399,13 +456,9 @@ const Inbox = () => {
 
             // DON'T decrypt on initial load - just store metadata for lazy loading
             const isEncrypted = !!fields.allowlist_id;
-            
-            // Format timestamp
-            const timestamp = new Date(
-              typeof fields.timestamp === "string"
-                ? fields.timestamp
-                : parseInt(fields.timestamp)
-            ).toLocaleString();
+
+            // Blockchain timestamp is epoch number (not real time), real timestamp is in encrypted content
+            const timestamp = isEncrypted ? "Loading..." : "Just now";
 
             // Check if this mail is a reply to another mail
             const parentMailId = mailThreading.get(mailId);
@@ -431,18 +484,8 @@ const Inbox = () => {
               `⚠️ Skipping mail ${mailObj.data.objectId} - blob expired or corrupted:`,
               error instanceof Error ? error.message : error
             );
-            // Show placeholder for expired mail
-            let fallbackTimestamp = "";
-            try {
-              const timestampNum = parseInt(fields.timestamp);
-              if (!isNaN(timestampNum) && timestampNum > 0) {
-                fallbackTimestamp = new Date(timestampNum).toLocaleString();
-              } else {
-                fallbackTimestamp = new Date().toLocaleString();
-              }
-            } catch (error) {
-              fallbackTimestamp = new Date().toLocaleString();
-            }
+            // Create a fallback timestamp
+            const fallbackTimestamp = formatTimestamp(fields.timestamp);
 
             // Check if this expired mail is a reply to another mail
             const parentMailId = mailThreading.get(mailId);
@@ -465,14 +508,56 @@ const Inbox = () => {
       setEmails(parsedEmails);
 
       // Store inbox mails globally for AI assistant
-      if (typeof window !== 'undefined') {
+      if (typeof window !== "undefined") {
         (window as any).inboxMails = parsedEmails;
+      }
+
+      // Background load: Decrypt and update timestamps without blocking UI
+      if (sessionInitialized) {
+        backgroundLoadTimestamps(parsedEmails);
       }
     } catch (error) {
       console.error("Failed to load emails:", error);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Background function to load and update timestamps
+  const backgroundLoadTimestamps = async (emailList: Email[]) => {
+    console.log("🕐 Starting background timestamp loading...");
+
+    for (const email of emailList) {
+      if (email.isEncrypted && email.allowlistId) {
+        try {
+          const mailContent = await decryptionService.decryptMail(
+            email.blobId,
+            email.allowlistId
+          );
+
+          if (mailContent.timestamp) {
+            const timestamp = formatTimestamp(mailContent.timestamp);
+
+            // Update email with correct timestamp
+            setEmails((prevEmails) =>
+              prevEmails.map((e) =>
+                e.id === email.id ? { ...e, time: timestamp } : e
+              )
+            );
+
+            // Also update selectedEmail if this is the currently opened mail
+            setSelectedEmail((prev) =>
+              prev && prev.id === email.id ? { ...prev, time: timestamp } : prev
+            );
+          }
+        } catch (error) {
+          // Silently fail for individual emails
+          console.warn(`Failed to load timestamp for ${email.id}:`, error);
+        }
+      }
+    }
+
+    console.log("✅ Background timestamp loading completed");
   };
 
   if (selectedEmail) {
@@ -567,7 +652,9 @@ const Inbox = () => {
               </div>
             </div>
             <div className="flex items-center gap-1 text-sm text-gray-500">
-              <span>{selectedEmail.time}</span>
+              <span className="transition-opacity duration-500 ease-in-out">
+                {selectedEmail.time}
+              </span>
             </div>
           </div>
         </div>
@@ -585,9 +672,15 @@ const Inbox = () => {
           {selectedEmail.attachments &&
             selectedEmail.attachments.length > 0 && (
               <div className="mb-8">
-                <h3 className="text-sm font-semibold text-black/60 mb-3">
-                  Attachments ({selectedEmail.attachments.length})
-                </h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-black/60">
+                    Attachments ({selectedEmail.attachments.length})
+                  </h3>
+                  <Button variant="outline" onClick={handleReply}>
+                    <Reply size={20} />
+                    <span className="font-medium">Reply</span>
+                  </Button>
+                </div>
                 <div className="space-y-2">
                   {selectedEmail.attachments.map(
                     (attachment: AttachmentInfo, index: number) => (
@@ -618,6 +711,17 @@ const Inbox = () => {
                 </div>
               </div>
             )}
+
+          {/* Reply button when no attachments */}
+          {(!selectedEmail.attachments ||
+            selectedEmail.attachments.length === 0) && (
+            <div className="mb-4">
+              <Button variant="outline" onClick={handleReply}>
+                <Reply size={20} />
+                <span className="font-medium">Reply</span>
+              </Button>
+            </div>
+          )}
 
           {/* Parent Mail Display */}
           {loadingParent && (
@@ -703,13 +807,6 @@ const Inbox = () => {
             </div>
           )}
         </div>
-
-        <div className="absolute bottom-8 right-8">
-          <Button variant="outline" onClick={handleReply}>
-            <Reply size={20} />
-            <span className="font-medium">Reply</span>
-          </Button>
-        </div>
       </div>
     );
   }
@@ -750,19 +847,21 @@ const Inbox = () => {
             <div
               key={email.id}
               onClick={async () => {
-              // Decrypt mail on demand before showing
-              const decryptedEmail = await decryptAndLoadMail(email);
-              setSelectedEmail(decryptedEmail);
-              // Make selected email available to chat assistant
-              (window as any).selectedEmail = decryptedEmail;
-            }}
+                // Decrypt mail on demand before showing
+                const decryptedEmail = await decryptAndLoadMail(email);
+                setSelectedEmail(decryptedEmail);
+                // Make selected email available to chat assistant
+                (window as any).selectedEmail = decryptedEmail;
+              }}
               className={`p-4 rounded-2xl border border-gray hover:bg-muted cursor-pointer transition-colors group ${
                 email.unread ? "bg-muted/85" : "bg-gray"
               }`}
             >
               <div className="flex justify-between items-start mb-1">
                 <h3 className="text-black font-semibold">{email.subject}</h3>
-                <span className="text-xs text-black">{email.time}</span>
+                <span className="text-xs text-black transition-opacity duration-500 ease-in-out">
+                  {email.time}
+                </span>
               </div>
               <h4
                 className={`text-sm mb-1 ${

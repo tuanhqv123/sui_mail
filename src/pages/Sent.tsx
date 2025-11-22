@@ -5,8 +5,6 @@ import {
   FileText,
   Download,
   Copy,
-  Users,
-  Clock,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
@@ -33,7 +31,32 @@ interface SentMail {
   allowlistId?: string;
   isDecrypted?: boolean;
   isEncrypted?: boolean;
+  sender?: string;
 }
+
+// Helper function to format timestamp from mail content (ISO string)
+const formatTimestamp = (timestamp: string | number): string => {
+  try {
+    // Mail content has ISO string timestamp like "2024-11-22T10:30:00.000Z"
+    const date = new Date(timestamp);
+
+    if (isNaN(date.getTime())) {
+      return "Just now";
+    }
+
+    // Format as: "Nov 22, 2025, 10:30 AM"
+    return date.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  } catch (error) {
+    return "Just now";
+  }
+};
 
 const Sent = () => {
   const [selectedEmail, setSelectedEmail] = useState<any>(null);
@@ -123,23 +146,31 @@ const Sent = () => {
           );
           console.log("✅ Sent mail decrypted successfully");
         } catch (decryptError) {
-          console.warn("⚠️ Decryption failed, trying plain download:", decryptError);
+          console.warn(
+            "⚠️ Decryption failed, trying plain download:",
+            decryptError
+          );
           mailContent = await walrusService.downloadBlobAsJson(email.blobId);
         }
       } else {
         mailContent = await walrusService.downloadBlobAsJson(email.blobId);
       }
 
+      const timestamp = mailContent.timestamp
+        ? formatTimestamp(mailContent.timestamp)
+        : email.time;
+
       const updatedEmail: SentMail = {
         ...email,
         subject: mailContent.subject || email.subject,
         body: mailContent.body || "",
         attachments: mailContent.attachments || [],
+        time: timestamp,
         isDecrypted: true,
       };
 
-      setSentMails(prevMails => 
-        prevMails.map(m => m.id === email.id ? updatedEmail : m)
+      setSentMails((prevMails) =>
+        prevMails.map((m) => (m.id === email.id ? updatedEmail : m))
       );
 
       return updatedEmail;
@@ -148,6 +179,43 @@ const Sent = () => {
       alert("Failed to load mail content. The blob may have expired.");
       return email;
     }
+  };
+
+  // Background function to load and update timestamps
+  const backgroundLoadTimestamps = async (mailList: SentMail[]) => {
+    console.log("🕐 Starting background timestamp loading for sent mails...");
+
+    for (const mail of mailList) {
+      if (mail.isEncrypted && mail.allowlistId) {
+        try {
+          const mailContent = await decryptionService.decryptMail(
+            mail.blobId,
+            mail.allowlistId
+          );
+
+          if (mailContent.timestamp) {
+            const timestamp = formatTimestamp(mailContent.timestamp);
+
+            // Update mail with correct timestamp
+            setSentMails((prevMails) =>
+              prevMails.map((m) =>
+                m.id === mail.id ? { ...m, time: timestamp } : m
+              )
+            );
+
+            // Also update selectedEmail if this is the currently opened mail
+            setSelectedEmail((prev) =>
+              prev && prev.id === mail.id ? { ...prev, time: timestamp } : prev
+            );
+          }
+        } catch (error) {
+          // Silently fail for individual mails
+          console.warn(`Failed to load timestamp for ${mail.id}:`, error);
+        }
+      }
+    }
+
+    console.log("✅ Background timestamp loading completed for sent mails");
   };
 
   const downloadAttachment = async (attachment: any) => {
@@ -201,18 +269,8 @@ const Sent = () => {
             // DON'T decrypt on initial load - just store metadata
             const isEncrypted = !!fields.allowlist_id;
 
-            // Format timestamp from blockchain
-            let timestamp = "";
-            try {
-              const timestampNum = parseInt(fields.timestamp);
-              if (!isNaN(timestampNum) && timestampNum > 0) {
-                timestamp = new Date(timestampNum).toLocaleString();
-              } else {
-                timestamp = new Date().toLocaleString();
-              }
-            } catch (error) {
-              timestamp = new Date().toLocaleString();
-            }
+            // Blockchain timestamp is epoch number (not real time), real timestamp is in encrypted content
+            const timestamp = isEncrypted ? "Loading..." : "Just now";
 
             parsedMails.push({
               id: mailObj.data.objectId,
@@ -222,6 +280,7 @@ const Sent = () => {
               body: "",
               attachments: [],
               recipients: [],
+              sender: fields.sender || currentAccount?.address,
               allowlistId: fields.allowlist_id || undefined,
               isDecrypted: false,
               isEncrypted,
@@ -232,18 +291,8 @@ const Sent = () => {
               `⚠️ Skipping mail ${mailObj.data.objectId} - blob expired or corrupted:`,
               error instanceof Error ? error.message : error
             );
-            // Show placeholder for expired mail
-            let fallbackTimestamp = "";
-            try {
-              const timestampNum = parseInt(fields.timestamp);
-              if (!isNaN(timestampNum) && timestampNum > 0) {
-                fallbackTimestamp = new Date(timestampNum).toLocaleString();
-              } else {
-                fallbackTimestamp = new Date().toLocaleString();
-              }
-            } catch (error) {
-              fallbackTimestamp = new Date().toLocaleString();
-            }
+            // Create a fallback timestamp (blockchain has epoch, not real time)
+            const fallbackTimestamp = "Loading...";
 
             parsedMails.push({
               id: mailObj.data.objectId,
@@ -260,8 +309,13 @@ const Sent = () => {
       setSentMails(parsedMails);
 
       // Store sent mails globally for AI assistant
-      if (typeof window !== 'undefined') {
+      if (typeof window !== "undefined") {
         (window as any).sentMails = parsedMails;
+      }
+
+      // Background load: Decrypt and update timestamps without blocking UI
+      if (sessionInitialized) {
+        backgroundLoadTimestamps(parsedMails);
       }
 
       // Resolve recipient names for all mails
@@ -317,75 +371,81 @@ const Sent = () => {
                   <span>
                     From:{" "}
                     {currentAccount
-                      ? `${currentAccount.address.slice(0, 6)}...${currentAccount.address.slice(-4)}`
+                      ? `${currentAccount.address.slice(
+                          0,
+                          6
+                        )}...${currentAccount.address.slice(-4)}`
                       : "Unknown"}
                   </span>
-                  {selectedEmail.recipients && selectedEmail.recipients.length > 0 && (
-                    <>
-                      <span>•</span>
-                      <div className="flex items-center gap-1">
-                        <span>Recipients:</span>
-                        <div className="flex flex-wrap gap-1">
-                          {(showAllRecipients
-                            ? selectedEmail.recipients
-                            : selectedEmail.recipients.slice(0, 3)
-                          ).map((recipient: string, index: number) => {
-                            const suinsName = recipientNames.get(recipient);
-                            return (
-                              <span
-                                key={index}
-                                className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-md text-xs text-gray-700 hover:bg-gray-200 cursor-pointer transition-colors flex-shrink-0"
-                                title={`${
-                                  suinsName ? suinsName + " - " : ""
-                                }${recipient}`}
-                                onClick={() => {
-                                  navigator.clipboard.writeText(recipient);
-                                  // Optional: Show toast notification
-                                }}
-                              >
-                                {formatAddress(recipient, suinsName)}
-                                <Copy
-                                  size={10}
-                                  className="opacity-50 hover:opacity-100 transition-opacity"
-                                />
-                              </span>
-                            );
-                          })}
-                          {selectedEmail.recipients.length > 3 &&
-                            !showAllRecipients && (
-                              <span className="text-xs text-gray-500">
-                                +{selectedEmail.recipients.length - 3} more
-                              </span>
-                            )}
+                  {selectedEmail.recipients &&
+                    selectedEmail.recipients.length > 0 && (
+                      <>
+                        <span>•</span>
+                        <div className="flex items-center gap-1">
+                          <span>Recipients:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {(showAllRecipients
+                              ? selectedEmail.recipients
+                              : selectedEmail.recipients.slice(0, 3)
+                            ).map((recipient: string, index: number) => {
+                              const suinsName = recipientNames.get(recipient);
+                              return (
+                                <span
+                                  key={index}
+                                  className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-md text-xs text-gray-700 hover:bg-gray-200 cursor-pointer transition-colors flex-shrink-0"
+                                  title={`${
+                                    suinsName ? suinsName + " - " : ""
+                                  }${recipient}`}
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(recipient);
+                                    // Optional: Show toast notification
+                                  }}
+                                >
+                                  {formatAddress(recipient, suinsName)}
+                                  <Copy
+                                    size={10}
+                                    className="opacity-50 hover:opacity-100 transition-opacity"
+                                  />
+                                </span>
+                              );
+                            })}
+                            {selectedEmail.recipients.length > 3 &&
+                              !showAllRecipients && (
+                                <span className="text-xs text-gray-500">
+                                  +{selectedEmail.recipients.length - 3} more
+                                </span>
+                              )}
+                          </div>
+                          {selectedEmail.recipients.length > 3 && (
+                            <button
+                              onClick={() =>
+                                setShowAllRecipients(!showAllRecipients)
+                              }
+                              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 transition-colors p-1 hover:bg-blue-50 rounded flex-shrink-0"
+                            >
+                              {showAllRecipients ? (
+                                <>
+                                  <ChevronUp size={14} />
+                                  Show Less
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronDown size={14} />
+                                  Show All
+                                </>
+                              )}
+                            </button>
+                          )}
                         </div>
-                        {selectedEmail.recipients.length > 3 && (
-                          <button
-                            onClick={() =>
-                              setShowAllRecipients(!showAllRecipients)
-                            }
-                            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 transition-colors p-1 hover:bg-blue-50 rounded flex-shrink-0"
-                          >
-                            {showAllRecipients ? (
-                              <>
-                                <ChevronUp size={14} />
-                                Show Less
-                              </>
-                            ) : (
-                              <>
-                                <ChevronDown size={14} />
-                                Show All
-                              </>
-                            )}
-                          </button>
-                        )}
-                      </div>
-                    </>
-                  )}
+                      </>
+                    )}
                 </div>
               </div>
             </div>
             <div className="flex items-center gap-1 text-sm text-gray-500">
-              <span>{selectedEmail.time}</span>
+              <span className="transition-opacity duration-500 ease-in-out">
+                {selectedEmail.time}
+              </span>
             </div>
           </div>
         </div>
@@ -473,20 +533,29 @@ const Sent = () => {
             <div
               key={mail.id}
               onClick={async () => {
-              // Decrypt mail on demand before showing
-              const decryptedMail = await decryptAndLoadMail(mail);
-              setSelectedEmail(decryptedMail);
-              // Make selected email available to chat assistant
-              (window as any).selectedEmail = decryptedMail;
-            }}
+                // Decrypt mail on demand before showing
+                const decryptedMail = await decryptAndLoadMail(mail);
+                setSelectedEmail(decryptedMail);
+                // Make selected email available to chat assistant
+                (window as any).selectedEmail = decryptedMail;
+              }}
               className="p-4 rounded-2xl border border-gray hover:bg-muted cursor-pointer transition-colors"
             >
               <div className="flex justify-between items-start mb-2">
-                <h3 className="text-black font-semibold text-base">
-                  {mail.subject}
-                </h3>
-                <div className="flex items-center gap-1 text-xs text-gray-500">
-                  <span>{mail.time}</span>
+                <div className="flex-1">
+                  <h3 className="text-black font-semibold text-base">
+                    {mail.subject}
+                  </h3>
+                  {mail.sender && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      From: {mail.sender.slice(0, 6)}...{mail.sender.slice(-4)}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 text-xs text-black">
+                  <span className="transition-opacity duration-500 ease-in-out">
+                    {mail.time}
+                  </span>
                 </div>
               </div>
 

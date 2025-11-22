@@ -43,39 +43,21 @@ const Layout = () => {
       {!isMobileMenuOpen && (
         <button
           onClick={() => setIsMobileMenuOpen(true)}
-          className="md:hidden fixed bottom-6 left-6 z-50 w-14 h-14 bg-white border-2 border-black text-black rounded-full flex items-center justify-center shadow-lg transition-colors duration-200 hover:bg-gray-100"
+          className="md:hidden fixed bottom-6 left-6 z-51 w-14 h-14 bg-white border-2 border-black text-black rounded-full flex items-center justify-center shadow-lg transition-colors duration-200 hover:bg-gray-100"
         >
           <Menu size={24} />
         </button>
       )}
 
       {/* Mobile Sidebar Overlay & Drawer */}
-      {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          <div
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300 opacity-100"
-            onClick={() => setIsMobileMenuOpen(false)}
-          />
-          <div
-            className="absolute left-0 top-0 bottom-0 w-72 bg-secondary p-4 shadow-lg"
-            style={{
-              transition: "transform 0.5s ease-in-out",
-              transform: isMobileMenuOpen
-                ? "translateX(0)"
-                : "translateX(-100%)",
-            }}
-          >
-            <Sidebar onItemClick={() => setIsMobileMenuOpen(false)} />
-          </div>
-        </div>
-      )}
+      {/* Only one mobile sidebar overlay! */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-40 md:hidden">
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setIsMobileMenuOpen(false)}
           />
-          <div className="absolute left-0 top-0 bottom-0 w-72 bg-primary p-4 animate-in slide-in-from-left duration-300">
+          <div className="absolute left-0 top-0 bottom-0 w-72 bg-transparent animate-in slide-in-from-left rounded-r-3xl duration-300">
             <Sidebar onItemClick={() => setIsMobileMenuOpen(false)} />
           </div>
         </div>

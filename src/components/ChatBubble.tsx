@@ -283,7 +283,7 @@ Current time: ${new Date().toLocaleString()}`;
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-8 right-8 z-50 bg-primary text-white p-4 rounded-full shadow-lg hover:scale-110 transition-transform duration-200 group"
+        className="fixed bottom-6 right-6 z-50 bg-gradient-to-br from-blue-300 via-blue-400 to-blue-500 text-white p-4 rounded-full shadow-lg hover:scale-110 transition-transform duration-200 group"
         title="Chat with AI Assistant"
       >
         <MessageCircle
@@ -295,7 +295,7 @@ Current time: ${new Date().toLocaleString()}`;
   }
 
   return (
-    <div className="fixed bottom-8 right-8 z-50 w-[450px] h-[650px] bg-white rounded-3xl shadow-2xl border-2 border-black flex flex-col">
+    <div className="fixed bottom-8 right-8 z-50 w-[325px] md:w-[450px] h-[650px] bg-white rounded-3xl shadow-2xl border-2 border-black flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-black">
         <div className="flex items-center gap-2">
