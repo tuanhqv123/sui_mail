@@ -26,19 +26,44 @@ export class SuiMailService {
 
   // Get user profile
   async getUserProfile(address: string) {
-    const objects = await this.client.getOwnedObjects({
-      owner: address,
-      filter: {
-        StructType: `${PACKAGE_ID}::sui_mail::UserProfile`,
-      },
-      options: {
-        showContent: true,
-        showType: true,
-      },
-    });
+    try {
+      // First try to find shared objects with owner field matching the address
+      const objects = await this.client.queryEvents({
+        query: {
+          MoveEventType: `${PACKAGE_ID}::sui_mail::ProfileCreated`,
+        },
+        options: {
+          showContent: true,
+          showObjectChanges: true,
+        },
+      });
 
-    if (objects.data.length === 0) return null;
-    return objects.data[0];
+      // Find the profile creation event for this address
+      const profileCreatedEvent = objects.data.find((event: any) => {
+        return event.parsedJson?.owner === address;
+      });
+
+      if (profileCreatedEvent) {
+        // Get the profile object ID from the event
+        const profileId = profileCreatedEvent.parsedJson?.profile_id;
+        if (profileId) {
+          // Fetch the actual profile object
+          const profileObject = await this.client.getObject({
+            id: profileId,
+            options: {
+              showContent: true,
+              showType: true,
+            },
+          });
+          return profileObject;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error("Error fetching profile:", error);
+      return null;
+    }
   }
 
   // Blacklist user
@@ -56,7 +81,6 @@ export class SuiMailService {
       arguments: [
         tx.object(profileId), // &mut UserProfile (OBJECT)
         tx.pure.address(blacklistedAddress), // address (PURE)
-        tx.pure.string("Blocked"), // String reason (PURE)
       ],
     });
 
@@ -74,11 +98,47 @@ export class SuiMailService {
     const tx = new Transaction();
 
     tx.moveCall({
-      target: `${PACKAGE_ID}::sui_mail::remove_from_blacklist`,
+      target: `${PACKAGE_ID}::sui_mail::remove_from_blacklist_entry`,
       arguments: [tx.object(profileId), tx.pure.address(blacklistedAddress)],
     });
 
     return await signAndExecute({ transaction: tx });
+  }
+
+  
+  // Get all blacklisted users for a profile
+  async getBlacklistedUsers(profileId: string): Promise<string[]> {
+    try {
+      // Get dynamic fields from the profile
+      const dynamicFields = await this.client.getDynamicFields({
+        parentId: profileId,
+      });
+
+      const blacklistedAddresses: string[] = [];
+
+      // Extract addresses from BlacklistEntry dynamic fields
+      for (const field of dynamicFields.data) {
+        // Extract address from the dynamic field name
+        let address: string | null = null;
+
+        if (field.name?.type === 'address' && typeof field.name?.value === 'string') {
+          address = field.name.value;
+        } else if (typeof field.name === 'string' && field.name.startsWith('0x')) {
+          address = field.name;
+        } else if (field.name?.value && typeof field.name.value === 'string' && field.name.value.startsWith('0x')) {
+          address = field.name.value;
+        }
+
+        if (address) {
+          blacklistedAddresses.push(address);
+        }
+      }
+
+      return blacklistedAddresses;
+    } catch (error) {
+      console.error("Error fetching blacklist:", error);
+      return [];
+    }
   }
 
   // Check if user is blacklisted
@@ -339,11 +399,49 @@ export class SuiMailService {
       ],
     });
 
-    return new Promise<{ recipients: string[] }>((resolve, reject) => {
+    return new Promise<{ recipients: string[]; mailId: string }>((resolve, reject) => {
       signAndExecute(
         { transaction: tx as any },
         {
-          onSuccess: () => resolve({ recipients: recipients }),
+          onSuccess: async (result: any) => {
+            try {
+              // Wait for transaction to complete
+              await new Promise((r) => setTimeout(r, 2000));
+
+              // Get the created mail from transaction effects
+              const txResult = await this.client.getTransactionBlock({
+                digest: result.digest,
+                options: {
+                  showEffects: true,
+                  showObjectChanges: true,
+                },
+              });
+
+              let createdMailId = "";
+
+              // Find created mail
+              if (txResult.objectChanges) {
+                for (const change of txResult.objectChanges) {
+                  if (
+                    change.type === "created" &&
+                    change.objectType.includes("::sui_mail::Mail")
+                  ) {
+                    createdMailId = change.objectId;
+                    break;
+                  }
+                }
+              }
+
+              if (!createdMailId) {
+                console.warn("Could not find created mail ID, but mail was sent");
+              }
+
+              resolve({ recipients: recipients, mailId: createdMailId });
+            } catch (error) {
+              console.error("Error getting mail ID:", error);
+              resolve({ recipients: recipients, mailId: "" });
+            }
+          },
           onError: (error: any) => reject(error),
         }
       );
@@ -496,6 +594,75 @@ export class SuiMailService {
     return await signAndExecute({ transaction: tx });
   }
 
+  // Create mail in existing allowlist (for replies)
+  async createMailInAllowlist(
+    allowlistId: string,
+    subject: string,
+    encryptedBlobId: string,
+    signAndExecute: (input: {
+      transaction: Transaction;
+    }) => Promise<{ digest: string; mailId: string }>
+  ) {
+    const tx = new Transaction();
+
+    tx.moveCall({
+      target: `${PACKAGE_ID}::sui_mail::create_mail_entry`,
+      arguments: [
+        tx.pure.string(subject), // String (PURE)
+        tx.pure.string(encryptedBlobId), // String (PURE)
+        tx.object(allowlistId), // &Allowlist (OBJECT)
+      ],
+    });
+
+    return new Promise<{ digest: string; mailId: string }>((resolve, reject) => {
+      (signAndExecute as any)(
+        { transaction: tx as any },
+        {
+          onSuccess: async (result: any) => {
+            try {
+              // Wait for transaction to complete
+              await new Promise((r) => setTimeout(r, 2000));
+
+              // Get the created mail from transaction effects
+              const txResult = await this.client.getTransactionBlock({
+                digest: result.digest,
+                options: {
+                  showEffects: true,
+                  showObjectChanges: true,
+                },
+              });
+
+              let createdMailId = "";
+
+              // Find created mail
+              if (txResult.objectChanges) {
+                for (const change of txResult.objectChanges) {
+                  if (
+                    change.type === "created" &&
+                    change.objectType.includes("::sui_mail::Mail")
+                  ) {
+                    createdMailId = change.objectId;
+                    break;
+                  }
+                }
+              }
+
+              if (!createdMailId) {
+                console.warn("Could not find created mail ID, but mail was sent");
+              }
+
+              resolve({ digest: result.digest, mailId: createdMailId });
+            } catch (error) {
+              console.error("Error getting mail ID:", error);
+              resolve({ digest: result.digest, mailId: "" });
+            }
+          },
+          onError: (error: any) => reject(error),
+        }
+      );
+    });
+  }
+
   // Get mails for an allowlist
   async getMailsForAllowlist(allowlistId: string) {
     // Query MailSent events for this allowlist
@@ -539,7 +706,7 @@ export class SuiMailService {
     return mail;
   }
 
-  // Add reply to mail
+  // Add reply to mail (for adding reply content)
   async addReply(
     mailId: string,
     replyBlobId: string,
@@ -552,6 +719,27 @@ export class SuiMailService {
     tx.moveCall({
       target: `${PACKAGE_ID}::sui_mail::add_reply`,
       arguments: [tx.object(mailId), tx.pure.string(replyBlobId)],
+    });
+
+    return await signAndExecute({ transaction: tx });
+  }
+
+  // Add reply relationship between two existing mails
+  async addReplyRelationship(
+    parentMailId: string,
+    replyMailId: string,
+    signAndExecute: (input: {
+      transaction: Transaction;
+    }) => Promise<{ digest: string }>
+  ) {
+    const tx = new Transaction();
+
+    tx.moveCall({
+      target: `${PACKAGE_ID}::sui_mail::add_reply_entry`,
+      arguments: [
+        tx.object(parentMailId), // Parent mail object
+        tx.object(replyMailId),  // Reply mail object
+      ],
     });
 
     return await signAndExecute({ transaction: tx });
@@ -630,5 +818,50 @@ export class SuiMailService {
 
     console.log("📬 Total received mails:", allMails.length);
     return allMails;
+  }
+
+  // Get mail reply relationships (parent-child relationships)
+  async getMailReplyRelationships(mailIds: string[]): Promise<Map<string, string>> {
+    const parentChildMap = new Map<string, string>();
+
+    // Query MailReplied events
+    const replyEvents = await this.client.queryEvents({
+      query: {
+        MoveEventType: `${PACKAGE_ID}::sui_mail::MailReplied`,
+      },
+    });
+
+    // Build parent-child relationships for our mails
+    for (const event of replyEvents.data) {
+      if (event.parsedJson) {
+        const replyData = event.parsedJson as any;
+        const parentMailId = replyData.parent_mail_id;
+        const replyMailId = replyData.reply_mail_id;
+
+        // If the reply mail is in our list, store its parent
+        if (mailIds.includes(replyMailId)) {
+          parentChildMap.set(replyMailId, parentMailId);
+        }
+      }
+    }
+
+    return parentChildMap;
+  }
+
+  // Get all reply relationships for a user's mails
+  async getMailThreadingForUser(userAddress: string): Promise<Map<string, string>> {
+    // First get all mail IDs for this user (both sent and received)
+    const [sentMails, receivedMails] = await Promise.all([
+      this.getSentMails(userAddress),
+      this.getReceivedMails(userAddress),
+    ]);
+
+    // Extract all mail IDs
+    const allMailIds = [
+      ...sentMails.map(mail => mail.data?.objectId).filter(Boolean),
+      ...receivedMails.map(mail => mail.data?.objectId).filter(Boolean),
+    ];
+
+    return this.getMailReplyRelationships(allMailIds);
   }
 }

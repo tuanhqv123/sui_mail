@@ -2,7 +2,6 @@ import { SealClient, SessionKey } from "@mysten/seal";
 import { SuiClient, getFullnodeUrl } from "@mysten/sui/client";
 import {
   PACKAGE_ID,
-  SEAL_PACKAGE_ID,
   SEAL_KEY_SERVER_IDS,
   SEAL_THRESHOLD,
 } from "../config/constants";
@@ -18,8 +17,8 @@ export class SealEncryptionService {
   private static instance: SealEncryptionService | null = null;
 
   constructor(suiClient: any) {
-    this.suiClient = suiClient;
     this.freshClient = new SuiClient({ url: getFullnodeUrl("testnet") });
+    this.suiClient = suiClient;
 
     this.client = new SealClient({
       suiClient: this.freshClient,
@@ -147,23 +146,23 @@ export class SealEncryptionService {
    */
   static async createSessionKey(
     suiAddress: string,
-    suiClient: any,
-    signPersonalMessage: (message: Uint8Array) => Promise<{ signature: string }>
+    signPersonalMessage: (input: {
+      message: Uint8Array;
+    }) => Promise<{ signature: string }>
   ): Promise<SessionKey> {
     const freshClient = new SuiClient({ url: getFullnodeUrl("testnet") });
 
     const sessionKey = await SessionKey.create({
       address: suiAddress,
       packageId: PACKAGE_ID,
-      ttlMin: 10,
+      ttlMin: 30,
       suiClient: freshClient,
     });
 
     const message = sessionKey.getPersonalMessage();
-    const signResult = await signPersonalMessage(message);
-    const signature = signResult.signature;
+    const signResult = await signPersonalMessage({ message });
 
-    await sessionKey.setPersonalMessageSignature(signature);
+    await sessionKey.setPersonalMessageSignature(signResult.signature);
     return sessionKey;
   }
 
@@ -289,7 +288,6 @@ export class SealEncryptionService {
     signPersonalMessage: (
       message: Uint8Array
     ) => Promise<{ signature: string }>,
-    suiClient: any,
     ttlMin: number = 10
   ): Promise<SessionKey> {
     console.log("🔐 createSessionKey called:");
@@ -332,7 +330,9 @@ export class SealEncryptionService {
     const message = sessionKey.getPersonalMessage();
     console.log("📝 Personal message to sign:", {
       messageLength: message.length,
-      messageHex: Array.from(message.slice(0, 32)).map(b => b.toString(16).padStart(2, '0')).join(''),
+      messageHex: Array.from(message.slice(0, 32))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join(""),
     });
 
     // User signs the message in wallet
@@ -348,9 +348,9 @@ export class SealEncryptionService {
 
     // Validate session key by checking its properties
     console.log("🔍 Session key validation:");
-    console.log("  - Address matches:", sessionKey.address === userAddress);
-    console.log("  - Package ID matches:", sessionKey.packageId === PACKAGE_ID.replace("0x", ""));
-    console.log("  - Session key has signature:", !!sessionKey.signature);
+    console.log("  - Session key created successfully");
+    console.log("  - Session key packageId:", sessionKey.getPackageId());
+    console.log("  - Session key valid:", !!sessionKey);
 
     return sessionKey;
   }

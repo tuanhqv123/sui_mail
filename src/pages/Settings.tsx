@@ -38,11 +38,28 @@ const Settings = () => {
       if (profile && profile.data) {
         setHasProfile(true);
         setProfileId(profile.data.objectId);
+
+        // Load blocked users from the profile
+        await loadBlacklist(profile.data.objectId);
       } else {
         setHasProfile(false);
+        setBlacklist([]);
       }
     } catch (error) {
       console.error("Failed to load profile:", error);
+      setBlacklist([]);
+    }
+  };
+
+  const loadBlacklist = async (profileObjectId: string) => {
+    try {
+      const blockedUsers = await suiMailService.getBlacklistedUsers(
+        profileObjectId
+      );
+      setBlacklist(blockedUsers);
+    } catch (error) {
+      console.error("Failed to load blacklist:", error);
+      setBlacklist([]);
     }
   };
 
@@ -173,8 +190,8 @@ const Settings = () => {
         <p className="text-gray-500 mt-1">Manage your account preferences</p>
       </header>
 
-      <div className="max-w-2xl space-y-6">
-        <div className="p-6 rounded-2xl border border-gray-100">
+      <div className="max-w-2xl bg-muted rounded-2xl space-y-6">
+        <div className="p-6 rounded-2xl">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Profile</h3>
           {!hasProfile ? (
             <div>
@@ -195,9 +212,13 @@ const Settings = () => {
             </div>
           ) : (
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center text-white text-2xl font-bold">
-                {currentAccount?.address[0].toUpperCase()}
-              </div>
+              <img
+                src={`https://api.dicebear.com/9.x/glass/svg?seed=${
+                  currentAccount?.address || ""
+                }`}
+                alt="avatar"
+                className="w-16 h-16 rounded-xl flex-shrink-0"
+              />
               <div>
                 <p className="text-sm text-gray-600">Address:</p>
                 <p className="font-mono text-sm">
@@ -209,7 +230,7 @@ const Settings = () => {
           )}
         </div>
 
-        <div className="p-6 rounded-2xl border border-gray-100">
+        <div className="p-6 rounded-2xl">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">
             Blacklist
           </h3>
@@ -219,7 +240,7 @@ const Settings = () => {
               value={blacklistInput}
               onChange={(e) => setBlacklistInput(e.target.value)}
               placeholder="Enter address to block (0x...)"
-              className="flex-1 px-4 py-2 rounded-lg border border-gray-200 outline-none focus:border-black transition-colors"
+              className="flex-1 px-4 py-2 rounded-full border border-gray-200 outline-none focus:border-none transition-colors"
             />
             <Button
               onClick={handleAddBlacklist}
@@ -240,7 +261,9 @@ const Settings = () => {
                   key={index}
                   className="flex justify-between items-center p-3 bg-gray-50 rounded-lg"
                 >
-                  <span className="text-gray-700">{item}</span>
+                  <span className="text-gray-700 font-mono text-sm">
+                    {item.slice(0, 10)}...{item.slice(-8)}
+                  </span>
                   <button
                     onClick={() => handleRemoveBlacklist(item)}
                     className="text-gray-400 hover:text-red-500 transition-colors"

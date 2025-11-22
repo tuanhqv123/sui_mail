@@ -7,6 +7,8 @@ import {
   Copy,
   Users,
   Clock,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import "react-quill/dist/quill.snow.css";
 import {
@@ -40,6 +42,7 @@ const Sent = () => {
   const [recipientNames, setRecipientNames] = useState<
     Map<string, string | null>
   >(new Map());
+  const [showAllRecipients, setShowAllRecipients] = useState(false);
 
   const currentAccount = useCurrentAccount();
   const suiClient = useSuiClient();
@@ -52,10 +55,15 @@ const Sent = () => {
   );
   const walrusService = useMemo(() => new WalrusService(), []);
   const decryptionService = useMemo(
-    () => new MailDecryptionService(suiClient),
+    () => MailDecryptionService.getInstance(suiClient),
     [suiClient]
   );
   const { resolveAddresses, formatAddress } = useSuiNs();
+
+  // Reset expanded state when selecting a new email
+  useEffect(() => {
+    setShowAllRecipients(false);
+  }, [selectedEmail]);
 
   useEffect(() => {
     if (currentAccount) {
@@ -79,12 +87,13 @@ const Sent = () => {
     try {
       await decryptionService.initializeSessionKey(
         currentAccount.address,
-        async (message: Uint8Array) => {
+        async ({ message }: { message: Uint8Array }) => {
           const result = await signPersonalMessage({ message });
           return { signature: result.signature };
         }
       );
       setSessionInitialized(true);
+      console.log("✅ Session initialized successfully in Sent");
     } catch (error) {
       console.error("Failed to initialize decryption:", error);
       alert("Failed to initialize decryption session. Please try again.");
@@ -253,81 +262,103 @@ const Sent = () => {
   if (selectedEmail) {
     return (
       <div className="p-8 h-full flex flex-col relative">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => setSelectedEmail(null)}
-            className="p-2 hover:bg-black/5 rounded-full transition-colors"
-          >
-            <ArrowLeft size={24} className="text-black" />
-          </button>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-secondary rounded-full flex items-center justify-center text-black font-bold">
-              YOU
-            </div>
-            <div>
-              <h3 className="text-normal font-bold text-black">
-                {selectedEmail.subject}
-              </h3>
-              <div className="text-sm text-gray-600">
-                From:{" "}
-                {currentAccount
-                  ? `${currentAccount.address.slice(
-                      0,
-                      6
-                    )}...${currentAccount.address.slice(-4)}`
-                  : "Unknown"}
+        <div className="flex flex-col gap-2 mb-2">
+          {/* Title Row - All on same line */}
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setSelectedEmail(null)}
+              className="p-2 hover:bg-black/5 rounded-full transition-colors"
+            >
+              <ArrowLeft size={24} className="text-black" />
+            </button>
+            <div className="flex items-center gap-3 flex-1">
+              <img
+                src="https://api.dicebear.com/9.x/glass/svg?seed=Jude"
+                alt="avatar"
+                className="w-12 h-12 rounded-xl flex-shrink-0"
+              />
+              <div className="flex-1 min-w-0">
+                <h3 className="text-xl font-bold text-black truncate">
+                  {selectedEmail.subject}
+                </h3>
+                <div className="text-sm text-black flex items-center gap-2">
+                  <span>
+                    From:{" "}
+                    {currentAccount
+                      ? `${currentAccount.address.slice(0, 6)}...${currentAccount.address.slice(-4)}`
+                      : "Unknown"}
+                  </span>
+                  {selectedEmail.recipients && selectedEmail.recipients.length > 0 && (
+                    <>
+                      <span>•</span>
+                      <div className="flex items-center gap-1">
+                        <span>Recipients:</span>
+                        <div className="flex flex-wrap gap-1">
+                          {(showAllRecipients
+                            ? selectedEmail.recipients
+                            : selectedEmail.recipients.slice(0, 3)
+                          ).map((recipient: string, index: number) => {
+                            const suinsName = recipientNames.get(recipient);
+                            return (
+                              <span
+                                key={index}
+                                className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-md text-xs text-gray-700 hover:bg-gray-200 cursor-pointer transition-colors flex-shrink-0"
+                                title={`${
+                                  suinsName ? suinsName + " - " : ""
+                                }${recipient}`}
+                                onClick={() => {
+                                  navigator.clipboard.writeText(recipient);
+                                  // Optional: Show toast notification
+                                }}
+                              >
+                                {formatAddress(recipient, suinsName)}
+                                <Copy
+                                  size={10}
+                                  className="opacity-50 hover:opacity-100 transition-opacity"
+                                />
+                              </span>
+                            );
+                          })}
+                          {selectedEmail.recipients.length > 3 &&
+                            !showAllRecipients && (
+                              <span className="text-xs text-gray-500">
+                                +{selectedEmail.recipients.length - 3} more
+                              </span>
+                            )}
+                        </div>
+                        {selectedEmail.recipients.length > 3 && (
+                          <button
+                            onClick={() =>
+                              setShowAllRecipients(!showAllRecipients)
+                            }
+                            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 transition-colors p-1 hover:bg-blue-50 rounded flex-shrink-0"
+                          >
+                            {showAllRecipients ? (
+                              <>
+                                <ChevronUp size={14} />
+                                Show Less
+                              </>
+                            ) : (
+                              <>
+                                <ChevronDown size={14} />
+                                Show All
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-          <div className="flex items-center gap-1 text-sm text-gray-500 ml-auto">
-            <span>{selectedEmail.time}</span>
+            <div className="flex items-center gap-1 text-sm text-gray-500">
+              <span>{selectedEmail.time}</span>
+            </div>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          <div className="mb-2 pb-2 border-b border-gray-200">
-            {selectedEmail.recipients &&
-              selectedEmail.recipients.length > 0 && (
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-gray-700">
-                    Recipients:
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedEmail.recipients.map(
-                      (recipient: string, index: number) => {
-                        const suinsName = recipientNames.get(recipient);
-                        return (
-                          <div
-                            key={index}
-                            className="inline-flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 cursor-pointer transition-colors"
-                          >
-                            <span className="text-sm text-gray-700 font-medium">
-                              {suinsName ? (
-                                <>
-                                  <span className="text-blue-600">
-                                    {suinsName}
-                                  </span>
-                                  <span className="text-gray-500">
-                                    ({recipient.slice(0, 6)}
-                                    ...
-                                    {recipient.slice(-4)})
-                                  </span>
-                                </>
-                              ) : (
-                                `${recipient.slice(0, 6)}...${recipient.slice(
-                                  -4
-                                )}`
-                              )}
-                            </span>
-                          </div>
-                        );
-                      }
-                    )}
-                  </div>
-                </div>
-              )}
-          </div>
-
           {/* Mail content */}
           <div className="bg-white border border-gray-200 rounded mb-4">
             <div className="ql-snow">
@@ -389,17 +420,14 @@ const Sent = () => {
         <div className="flex items-center gap-4">
           {initializingSession && (
             <span className="text-sm text-blue-600 font-medium">
-              🔐 Initializing decryption...
+              Initializing decryption...
             </span>
           )}
           {sessionInitialized && (
             <span className="text-sm text-green-600 font-medium">
-              🔓 Decryption Active
+              Decryption Active
             </span>
           )}
-          <div className="text-sm text-gray-500">
-            {sentMails.length} messages
-          </div>
         </div>
       </header>
 
@@ -416,19 +444,18 @@ const Sent = () => {
               className="p-4 rounded-2xl border border-gray hover:bg-muted cursor-pointer transition-colors"
             >
               <div className="flex justify-between items-start mb-2">
-                <h3 className="text-black font-semibold text-sm">
+                <h3 className="text-black font-semibold text-base">
                   {mail.subject}
                 </h3>
                 <div className="flex items-center gap-1 text-xs text-gray-500">
-                  <Clock size={12} />
                   <span>{mail.time}</span>
                 </div>
               </div>
 
               {mail.recipients && mail.recipients.length > 0 && (
                 <div className="flex items-center gap-2 mb-2">
-                  <Users size={14} className="text-gray-400" />
-                  <div className="flex flex-wrap gap-1">
+                  <div className="flex flex-wrap text-sm gap-1">
+                    To:{" "}
                     {mail.recipients
                       .slice(0, 3)
                       .map((recipient: string, index: number) => {

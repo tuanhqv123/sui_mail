@@ -1,0 +1,9 @@
+<svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sui-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4B9BFF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2951CC;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <path fill="url(#sui-gradient)" d="M250 50C320 50 380 110 380 180C380 250 320 380 250 380C180 380 120 320 120 250C120 180 180 50 250 50ZM250 130C280 130 300 150 300 180C300 210 280 230 250 230C220 230 200 210 200 180C200 150 220 130 250 130ZM200 250C220 250 240 270 260 320C260 310 280 270 300 250C280 230 260 210 240 190C220 200 200 250 200 250Z"/>
+</svg>

@@ -32,8 +32,12 @@ const Sidebar = ({ onItemClick }: SidebarProps) => {
   return (
     <div className="w-64 h-full bg-primary rounded-[2rem] flex flex-col py-6 px-6 shadow-sm">
       <div className="flex items-center gap-3 mb-10 px-2">
-        <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm">
-          <span className="text-primary font-bold text-xl">S</span>
+        <div className="w-10 h-10 bg-muted rounded-full flex items-center justify-center shadow-sm p-1">
+          <img
+            src="/Sui_Symbol_Sea.svg"
+            alt="Sui Logo"
+            className="w-full h-full object-contain"
+          />
         </div>
         <span className="text-xl font-bold text-black">Sui Mail</span>
       </div>

@@ -10,11 +10,11 @@ import {
   useSignAndExecuteTransaction,
 } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
-import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { getFullnodeUrl } from "@mysten/sui/client";
 import { SuiMailService } from "../services/suiService";
 import { WalrusService } from "../services/walrusService";
 import { SealEncryptionService } from "../services/sealService";
+import { SuiNsService } from "../services/suiNsService";
 import { PACKAGE_ID } from "../config/constants";
 import {
   combineMailContent,
@@ -26,6 +26,7 @@ import {
   type AttachmentInfo,
   type EncryptedMailContent,
 } from "../utils/encryption";
+import ErrorModal from "../components/ErrorModal";
 
 interface LocationState {
   replyTo?: string;
@@ -38,6 +39,9 @@ const Compose = () => {
   const locationState = location.state as LocationState | null;
 
   const [recipients, setRecipients] = useState<string[]>([]);
+  const [recipientNames, setRecipientNames] = useState<
+    Map<string, string | null>
+  >(new Map());
   const [recipientInput, setRecipientInput] = useState("");
   const [subject, setSubject] = useState("");
   const [content, setContent] = useState("");
@@ -49,6 +53,12 @@ const Compose = () => {
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const quillRef = useRef<ReactQuill>(null);
+
+  // Modal states
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalTitle, setModalTitle] = useState("");
+  const [modalMessage, setModalMessage] = useState("");
+  const [checkingBlocklist, setCheckingBlocklist] = useState(false);
 
   const currentAccount = useCurrentAccount();
   const suiClient = useSuiClient();
@@ -67,38 +77,164 @@ const Compose = () => {
     }
   }, [locationState]);
 
-  // Create SuiJsonRpcClient for Seal SDK
-  const sealClient = useMemo(
-    () =>
-      new SuiJsonRpcClient({
-        url: getFullnodeUrl("testnet"),
-        network: "testnet",
-      }),
-    []
-  );
+  // Resolve recipient names when recipients change
+  useEffect(() => {
+    if (recipients.length > 0) {
+      const resolveNames = async () => {
+        const names = new Map<string, string | null>();
+
+        await Promise.all(
+          recipients.map(async (address) => {
+            try {
+              const name = await suiNsService.resolveAddressToName(address);
+              names.set(address, name);
+            } catch (error) {
+              console.error("Error resolving address to name:", error);
+              names.set(address, null);
+            }
+          })
+        );
+
+        setRecipientNames(names);
+      };
+
+      resolveNames();
+    }
+  }, [recipients]);
 
   const suiMailService = new SuiMailService(suiClient);
   const walrusService = new WalrusService();
-  const sealService = new SealEncryptionService(sealClient);
+  const sealService = SealEncryptionService.getInstance(suiClient);
+  const suiNsService = new SuiNsService();
 
-  const handleAddRecipient = () => {
-    const address = recipientInput.trim();
+  // Helper function to check if current user is blocked by recipients
+  const checkBlockedRecipients = async (recipientAddresses: string[]): Promise<string[]> => {
+    if (!currentAccount) return [];
 
-    if (!address) return;
+    try {
+      const blockedByRecipients: string[] = [];
 
-    // Basic validation for Sui address format
-    if (!address.startsWith("0x") || address.length < 10) {
-      alert("Please enter a valid Sui address (starts with 0x)");
-      return;
+      // For each recipient, check if they have blocked the current user
+      for (const recipientAddress of recipientAddresses) {
+        try {
+          const recipientProfile = await suiMailService.getUserProfile(recipientAddress);
+          if (recipientProfile && recipientProfile.data) {
+            // Get recipient's blacklist and check if current user is in it
+            const recipientBlockedUsers = await suiMailService.getBlacklistedUsers(recipientProfile.data.objectId);
+
+            if (recipientBlockedUsers.some(blockedUser =>
+              blockedUser.toLowerCase() === currentAccount.address.toLowerCase()
+            )) {
+              blockedByRecipients.push(recipientAddress);
+            }
+          }
+        } catch (error) {
+          console.error(`Error checking if blocked by ${recipientAddress}:`, error);
+          // Continue checking other recipients
+        }
+      }
+
+      return blockedByRecipients;
+    } catch (error) {
+      console.error("Error checking recipient blacklists:", error);
+      // If network fails, don't block the user - just let them add recipients
+      // The validation will happen again at send time when network might be better
     }
 
-    if (recipients.includes(address)) {
-      alert("This address is already added");
-      return;
-    }
+    return [];
+  };
 
-    setRecipients([...recipients, address]);
-    setRecipientInput("");
+  // Show error modal
+  const showErrorModal = (title: string, message: string) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalOpen(true);
+  };
+
+  const handleAddRecipient = async () => {
+    const input = recipientInput.trim();
+
+    if (!input) return;
+
+    // Check if it's a SuiNS name (starts with @) or looks like one
+    if (input.startsWith("@") || /^[a-z0-9-]+\.(sui)$/.test(input)) {
+      try {
+        const result = await suiNsService.resolveRecipient(input);
+        if (!result) {
+          alert(`Could not resolve SuiNS name: ${input}`);
+          return;
+        }
+
+        if (recipients.includes(result.address)) {
+          showErrorModal("Duplicate Recipient", "This address is already added to the recipients list.");
+          return;
+        }
+
+        // Check if the address is blocked (with loading state)
+        setCheckingBlocklist(true);
+        try {
+          const blockedRecipients = await checkBlockedRecipients([result.address]);
+          if (blockedRecipients.length > 0) {
+            showErrorModal(
+              "Cannot Send Mail",
+              `Cannot send mail to ${result.address.slice(0, 10)}...${result.address.slice(-8)}. This user has blocked you.`
+            );
+            setRecipientInput(""); // Clear the input field
+            return;
+          }
+        } catch (error) {
+          console.error("Error checking blacklist:", error);
+          // Continue anyway if check fails
+        } finally {
+          setCheckingBlocklist(false);
+        }
+
+        setRecipients([...recipients, result.address]);
+        setRecipientInput("");
+        console.log(
+          `✅ Resolved SuiNS name ${input} to address ${result.address}`
+        );
+      } catch (error) {
+        console.error("Error resolving SuiNS name:", error);
+        alert(`Failed to resolve SuiNS name: ${input}`);
+      }
+    } else {
+      // Handle regular Sui address
+      if (!input.startsWith("0x") || input.length < 10) {
+        showErrorModal(
+          "Invalid Address",
+          "Please enter a valid Sui address (starts with 0x) or SuiNS name (like @name.sui)"
+        );
+        return;
+      }
+
+      if (recipients.includes(input)) {
+        showErrorModal("Duplicate Recipient", "This address is already added to the recipients list.");
+        return;
+      }
+
+      // Check if the address is blocked (with loading state)
+      setCheckingBlocklist(true);
+      try {
+        const blockedRecipients = await checkBlockedRecipients([input]);
+        if (blockedRecipients.length > 0) {
+          showErrorModal(
+            "Cannot Send Mail",
+            `Cannot send mail to ${input.slice(0, 10)}...${input.slice(-8)}. This user has blocked you.`
+          );
+          setRecipientInput(""); // Clear the input field
+          return;
+        }
+      } catch (error) {
+        console.error("Error checking blacklist:", error);
+        // Continue anyway if check fails
+      } finally {
+        setCheckingBlocklist(false);
+      }
+
+      setRecipients([...recipients, input]);
+      setRecipientInput("");
+    }
   };
 
   const handleRemoveRecipient = (address: string) => {
@@ -141,18 +277,36 @@ const Compose = () => {
 
   const handleSend = async () => {
     if (!currentAccount) {
-      alert("Please connect your wallet first");
+      showErrorModal("Wallet Not Connected", "Please connect your wallet first");
       return;
     }
 
     if (recipients.length === 0) {
-      alert("Please add at least one recipient");
+      showErrorModal("No Recipients", "Please add at least one recipient");
       return;
     }
 
     if (!subject.trim()) {
-      alert("Please enter a subject");
+      showErrorModal("Missing Subject", "Please enter a subject");
       return;
+    }
+
+    // Check if any recipients are blocked (redundant check since we check on add, but good for safety)
+    try {
+      const blockedRecipients = await checkBlockedRecipients(recipients);
+      if (blockedRecipients.length > 0) {
+        const blockedList = blockedRecipients.map(recipient =>
+          `${recipient.slice(0, 10)}...${recipient.slice(-8)}`
+        ).join(', ');
+        showErrorModal(
+          "Cannot Send Mail",
+          `Cannot send mail to the following users who have blocked you: ${blockedList}. Please remove them from recipients and try again.`
+        );
+        return;
+      }
+    } catch (error) {
+      console.error("Error checking blacklist:", error);
+      // Continue with send if blacklist check fails
     }
 
     setSending(true);
@@ -174,67 +328,99 @@ const Compose = () => {
 
       setUploading(false);
 
-      // Step 2: Create allowlist first (we need its ID for encryption)
-      const { allowlistId, capId } = await new Promise<{
-        allowlistId: string;
-        capId: string;
-      }>((resolve, reject) => {
-        const tx = new Transaction();
-        const allowlistName = `Mail: ${subject.substring(0, 20)}...`;
-        const allowlistDesc = `Created for recipients: ${recipients.length}`;
+      let allowlistId: string;
+      let capId: string;
 
-        tx.moveCall({
-          target: `${PACKAGE_ID}::sui_mail::create_allowlist_entry`,
-          arguments: [
-            tx.pure.string(allowlistName),
-            tx.pure.string(allowlistDesc),
-          ],
+      if (parentMailId) {
+        // This is a reply - we need to use the parent mail's allowlist
+        console.log("📧 Creating reply - getting parent mail allowlist");
+
+        try {
+          const parentMail = await suiMailService.getMailById(parentMailId);
+          if (parentMail.data?.content?.fields?.allowlist_id) {
+            allowlistId = parentMail.data.content.fields.allowlist_id;
+            console.log("✅ Using parent mail allowlist:", allowlistId);
+
+            // For replies, we need to create a new cap for the existing allowlist
+            // This is a bit complex, so let's try a different approach
+            capId = ""; // We'll handle this differently for replies
+          } else {
+            throw new Error("Parent mail has no allowlist_id");
+          }
+        } catch (error) {
+          console.error("Failed to get parent mail allowlist:", error);
+          // Fallback to creating new allowlist
+          console.log("🔄 Falling back to creating new allowlist");
+        }
+      }
+
+      // If it's not a reply or we failed to get parent allowlist, create a new allowlist
+      if (!allowlistId) {
+        console.log("🆕 Creating new allowlist for mail");
+        const allowlistResult = await new Promise<{
+          allowlistId: string;
+          capId: string;
+        }>((resolve, reject) => {
+          const tx = new Transaction();
+          const allowlistName = `Mail: ${subject.substring(0, 20)}...`;
+          const allowlistDesc = `Created for recipients: ${recipients.length}`;
+
+          tx.moveCall({
+            target: `${PACKAGE_ID}::sui_mail::create_allowlist_entry`,
+            arguments: [
+              tx.pure.string(allowlistName),
+              tx.pure.string(allowlistDesc),
+            ],
+          });
+
+          signAndExecute(
+            { transaction: tx as any },
+            {
+              onSuccess: async (result: any) => {
+                try {
+                  await new Promise((r) => setTimeout(r, 2000));
+                  const txResult = await suiClient.getTransactionBlock({
+                    digest: result.digest,
+                    options: { showObjectChanges: true },
+                  });
+
+                  const allowlist = txResult.objectChanges?.find(
+                    (change: any) =>
+                      change.type === "created" &&
+                      change.objectType?.includes("::sui_mail::Allowlist")
+                  );
+
+                  const cap = txResult.objectChanges?.find(
+                    (change: any) =>
+                      change.type === "created" &&
+                      change.objectType?.includes("::sui_mail::Cap")
+                  );
+
+                  if (
+                    allowlist &&
+                    "objectId" in allowlist &&
+                    cap &&
+                    "objectId" in cap
+                  ) {
+                    resolve({
+                      allowlistId: allowlist.objectId,
+                      capId: cap.objectId,
+                    });
+                  } else {
+                    reject(new Error("Allowlist or Cap not found"));
+                  }
+                } catch (error) {
+                  reject(error);
+                }
+              },
+              onError: reject,
+            }
+          );
         });
 
-        signAndExecute(
-          { transaction: tx as any },
-          {
-            onSuccess: async (result: any) => {
-              try {
-                await new Promise((r) => setTimeout(r, 2000));
-                const txResult = await suiClient.getTransactionBlock({
-                  digest: result.digest,
-                  options: { showObjectChanges: true },
-                });
-
-                const allowlist = txResult.objectChanges?.find(
-                  (change: any) =>
-                    change.type === "created" &&
-                    change.objectType?.includes("::sui_mail::Allowlist")
-                );
-
-                const cap = txResult.objectChanges?.find(
-                  (change: any) =>
-                    change.type === "created" &&
-                    change.objectType?.includes("::sui_mail::Cap")
-                );
-
-                if (
-                  allowlist &&
-                  "objectId" in allowlist &&
-                  cap &&
-                  "objectId" in cap
-                ) {
-                  resolve({
-                    allowlistId: allowlist.objectId,
-                    capId: cap.objectId,
-                  });
-                } else {
-                  reject(new Error("Allowlist or Cap not found"));
-                }
-              } catch (error) {
-                reject(error);
-              }
-            },
-            onError: reject,
-          }
-        );
-      });
+        allowlistId = allowlistResult.allowlistId;
+        capId = allowlistResult.capId;
+      }
 
       console.log("Allowlist created:", allowlistId, "Cap:", capId);
 
@@ -306,21 +492,108 @@ const Compose = () => {
       const encryptedJson = JSON.stringify(encryptedMailContent);
       const mailBlobId = await walrusService.uploadText(encryptedJson);
 
-      // Step 7: Add members and send mail using address-based functions
-      await suiMailService.addMembersAndSendMail(
-        allowlistId,
-        capId,
-        currentAccount.address,
-        valid, // Only send to valid recipients
-        subject,
-        mailBlobId,
-        signAndExecute
-      );
+      // Step 7: Send mail - use different approach for replies vs new mail
+      let result: { mailId: string } | undefined;
+
+      // Create wrapper function to match expected signature
+      const signAndExecuteWrapper = (input: { transaction: Transaction }) => {
+        return new Promise<{ digest: string; mailId: string }>(
+          (resolve, reject) => {
+            signAndExecute(
+              {
+                transaction: input.transaction as any,
+              },
+              {
+                onSuccess: (result: any) => {
+                  if (result.mailId) {
+                    resolve(result);
+                  } else {
+                    // Generate a temporary mailId from the digest if not provided
+                    resolve({
+                      digest: result.digest,
+                      mailId: result.digest, // Use digest as temporary mailId
+                    });
+                  }
+                },
+                onError: (error: any) => reject(error),
+              }
+            );
+          }
+        );
+      };
+
+      if (parentMailId && !capId) {
+        // This is a reply in existing allowlist
+        console.log("📧 Creating reply mail in existing allowlist");
+        result = await suiMailService.createMailInAllowlist(
+          allowlistId,
+          subject,
+          mailBlobId,
+          signAndExecuteWrapper
+        );
+      } else {
+        // This is a new mail in new allowlist
+        console.log("📧 Creating new mail with new allowlist");
+        result = (await suiMailService.addMembersAndSendMail(
+          allowlistId,
+          capId,
+          currentAccount.address,
+          valid, // Only send to valid recipients
+          subject,
+          mailBlobId,
+          signAndExecuteWrapper
+        )) as any;
+      }
+
+      // Step 8: If this is a reply, add reply relationship
+      if (parentMailId && result?.mailId) {
+        try {
+          console.log("🔗 Setting up reply relationship:", {
+            parentMailId,
+            replyMailId: result.mailId,
+          });
+
+          // Use the SuiMailService addReplyRelationship method to link the two mails
+          (await suiMailService.addReplyRelationship(
+            parentMailId,
+            result.mailId,
+            async ({ transaction }) => {
+              const result = (await signAndExecute({
+                transaction: transaction as any,
+              })) as any;
+              return { digest: result.digest || "mock-digest" };
+            }
+          )) as any;
+          console.log("✅ Reply relationship established successfully");
+        } catch (replyError) {
+          console.error(
+            "❌ Failed to establish reply relationship:",
+            replyError
+          );
+          console.error("Reply error details:", {
+            message: replyError.message,
+            stack: replyError.stack,
+          });
+
+          // Try to understand the error better
+          if (replyError.message?.includes("EInvalidCap")) {
+            console.warn(
+              "⚠️ Allowlist mismatch - parent and reply mail are from different allowlists"
+            );
+          }
+
+          // Don't fail the whole operation if reply linking fails
+          alert(
+            "Mail sent successfully! However, reply linking failed. The mail was still delivered correctly."
+          );
+        }
+      }
 
       alert("Mail sent successfully! (Encrypted with Seal)");
 
       // Reset form
       setRecipients([]);
+      setRecipientNames(new Map());
       setSubject("");
       setContent("");
       setAttachments([]);
@@ -364,42 +637,64 @@ const Compose = () => {
 
   return (
     <div className="p-8 h-full flex flex-col">
-      <header className="flex justify-between items-center mb-8">
+      <header className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold text-gray-800">Compose</h1>
       </header>
 
-      <div className="flex-1 flex flex-col gap-6 bg-white rounded-2xl p-8 shadow-sm border border-gray">
+      <div className="flex-1 flex flex-col gap-6 bg-white">
         <div className="space-y-2">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              To (press Enter to add each address)
-            </label>
             <input
               type="text"
-              placeholder="0x..."
+              placeholder={
+                checkingBlocklist
+                  ? "Checking if address is blocked..."
+                  : "0x... or @name.sui then press Enter to add each address or @domain.sui"
+              }
               value={recipientInput}
               onChange={(e) => setRecipientInput(e.target.value)}
               onKeyDown={handleRecipientKeyDown}
-              className="w-full text-normal py-2 border-b border-gray focus:outline-none focus:border-black transition-colors placeholder:text-gray-400"
+              disabled={checkingBlocklist}
+              className={`w-full text-normal py-2 border-b border-gray focus:outline-none focus:border-black transition-colors placeholder:text-gray-400 ${
+                checkingBlocklist ? "disabled:cursor-not-allowed opacity-60" : ""
+              }`}
             />
+            {checkingBlocklist && (
+              <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
+                <Loader2 size={16} className="animate-spin" />
+                <span>Checking blacklist...</span>
+              </div>
+            )}
             {recipients.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-3">
-                {recipients.map((address, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full text-sm"
-                  >
-                    <span className="text-black font-mono">
-                      {address.slice(0, 6)}...{address.slice(-4)}
-                    </span>
-                    <button
-                      onClick={() => handleRemoveRecipient(address)}
-                      className="text-gray-500 hover:text-red-500 transition-colors"
+                {recipients.map((address, index) => {
+                  const suinsName = recipientNames.get(address);
+                  return (
+                    <div
+                      key={index}
+                      className="flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full text-sm"
                     >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))}
+                      <span className="text-black font-mono">
+                        {suinsName ? (
+                          <>
+                            <span className="text-blue-600">{suinsName}</span>
+                            <span className="text-gray-500 text-xs">
+                              ({address.slice(0, 6)}...{address.slice(-4)})
+                            </span>
+                          </>
+                        ) : (
+                          `${address.slice(0, 6)}...${address.slice(-4)}`
+                        )}
+                      </span>
+                      <button
+                        onClick={() => handleRemoveRecipient(address)}
+                        className="text-gray-500 hover:text-red-500 transition-colors"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -454,8 +749,7 @@ const Compose = () => {
             </div>
           </div>
         )}
-
-        <div className="flex justify-between items-center pt-4">
+        <div className="flex justify-between items-center">
           <div className="flex gap-2">
             <input
               ref={fileInputRef}
@@ -495,6 +789,14 @@ const Compose = () => {
           </Button>
         </div>
       </div>
+
+      {/* Error Modal */}
+      <ErrorModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={modalTitle}
+        message={modalMessage}
+      />
     </div>
   );
 };
