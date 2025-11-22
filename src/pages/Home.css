@@ -1,0 +1,307 @@
+/* Custom animations for neobrutalism and sea theme */
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) rotate(-3deg);
+  }
+  50% {
+    transform: translateY(-30px) rotate(3deg);
+  }
+}
+
+@keyframes gentleFloat {
+  0%, 100% {
+    transform: translateY(0px) rotate(-2deg) scale(1);
+  }
+  25% {
+    transform: translateY(-15px) rotate(1deg) scale(1.02);
+  }
+  50% {
+    transform: translateY(-25px) rotate(2deg) scale(1.05);
+  }
+  75% {
+    transform: translateY(-10px) rotate(-1deg) scale(1.02);
+  }
+}
+
+@keyframes wave {
+  0% {
+    transform: translateX(0) translateY(0);
+  }
+  33% {
+    transform: translateX(-30px) translateY(-10px);
+  }
+  66% {
+    transform: translateX(20px) translateY(5px);
+  }
+  100% {
+    transform: translateX(0) translateY(0);
+  }
+}
+
+@keyframes pulse-scale {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+@keyframes slide-in-rotate {
+  0% {
+    transform: translateY(100px) rotate(-15deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0) rotate(0);
+    opacity: 1;
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-wave {
+  animation: wave 8s ease-in-out infinite;
+}
+
+.animate-pulse-scale {
+  animation: pulse-scale 3s ease-in-out infinite;
+}
+
+.animate-slide-in-rotate {
+  animation: slide-in-rotate 0.8s ease-out forwards;
+}
+
+/* Animation delays */
+.animation-delay-200 {
+  animation-delay: 200ms;
+}
+
+.animation-delay-400 {
+  animation-delay: 400ms;
+}
+
+.animation-delay-600 {
+  animation-delay: 600ms;
+}
+
+.animation-delay-800 {
+  animation-delay: 800ms;
+}
+
+.animation-delay-1000 {
+  animation-delay: 1000ms;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2000ms;
+}
+
+.animation-delay-3000 {
+  animation-delay: 3000ms;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4000ms;
+}
+
+.animation-delay-5000 {
+  animation-delay: 5000ms;
+}
+
+/* Enhanced smooth scroll behavior */
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 2rem;
+}
+
+/* Custom scrollbar with sea theme */
+::-webkit-scrollbar {
+  width: 16px;
+}
+
+::-webkit-scrollbar-track {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-radius: 12px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
+  border-radius: 12px;
+  border: 3px solid #1e293b;
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.5);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #0891b2 0%, #2563eb 100%);
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.7);
+}
+
+/* Slower animations for Web3 feel */
+.animation-delay-1000 {
+  animation-delay: 1s;
+}
+
+.animation-delay-1500 {
+  animation-delay: 1.5s;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-3000 {
+  animation-delay: 3s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+.animation-delay-5000 {
+  animation-delay: 5s;
+}
+
+/* Enhanced blur effects */
+.blur-xl-enhanced {
+  filter: blur(2rem);
+  -webkit-filter: blur(2rem);
+}
+
+.blur-2xl-enhanced {
+  filter: blur(3rem);
+  -webkit-filter: blur(3rem);
+}
+
+.blur-3xl-enhanced {
+  filter: blur(4rem);
+  -webkit-filter: blur(4rem);
+}
+
+/* Ocean depth layers */
+.ocean-layer-1 {
+  background: radial-gradient(ellipse at center, rgba(6, 182, 212, 0.15) 0%, transparent 70%);
+  filter: blur(40px);
+  -webkit-filter: blur(40px);
+}
+
+.ocean-layer-2 {
+  background: radial-gradient(ellipse at center, rgba(59, 130, 246, 0.12) 0%, transparent 60%);
+  filter: blur(60px);
+  -webkit-filter: blur(60px);
+}
+
+.ocean-layer-3 {
+  background: radial-gradient(ellipse at center, rgba(99, 102, 241, 0.10) 0%, transparent 50%);
+  filter: blur(80px);
+  -webkit-filter: blur(80px);
+}
+
+/* Slower, more deliberate animations */
+.animate-float-slow {
+  animation: gentleFloat 12s ease-in-out infinite;
+}
+
+.animate-pulse-slow {
+  animation: pulse-scale 6s ease-in-out infinite;
+}
+
+.animate-wave-slow {
+  animation: wave 15s ease-in-out infinite;
+}
+
+/* Staggered animation utilities */
+.stagger-animation > * {
+  opacity: 0;
+  transform: translateY(30px);
+  animation: slideInUp 0.6s ease-out forwards;
+}
+
+.stagger-animation > *:nth-child(1) { animation-delay: 100ms; }
+.stagger-animation > *:nth-child(2) { animation-delay: 200ms; }
+.stagger-animation > *:nth-child(3) { animation-delay: 300ms; }
+.stagger-animation > *:nth-child(4) { animation-delay: 400ms; }
+.stagger-animation > *:nth-child(5) { animation-delay: 500ms; }
+.stagger-animation > *:nth-child(6) { animation-delay: 600ms; }
+
+@keyframes slideInUp {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Glow effects for Web3 feel */
+.glow-cyan {
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.5);
+}
+
+.glow-blue {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+}
+
+.glow-indigo {
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.5);
+}
+
+/* Gradient text effects */
+.gradient-text-cyan {
+  background: linear-gradient(135deg, #06b6d4, #0891b2);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-blue {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Hover state for neobrutalism */
+.neobrutal-hover {
+  transition: all 0.2s ease;
+  border: 3px solid #1e293b;
+}
+
+.neobrutal-hover:hover {
+  transform: translate(-4px, -4px);
+  box-shadow: 8px 8px 0px 0px #1e293b;
+}
+
+/* Jelly floating animation */
+.jelly-float {
+  animation: jellyFloat 4s ease-in-out infinite;
+}
+
+@keyframes jellyFloat {
+  0%, 100% {
+    transform: translateY(0) scale(1, 1);
+  }
+  25% {
+    transform: translateY(-10px) scale(0.95, 1.05);
+  }
+  50% {
+    transform: translateY(-5px) scale(1.02, 0.98);
+  }
+  75% {
+    transform: translateY(-15px) scale(0.98, 1.02);
+  }
+}
+
+/* Wave background animation */
+.wave-bg {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320'%3E%3Cpath fill='%2306b6d4' fill-opacity='0.3' d='M0,96L48,112C96,128,192,160,288,160C384,160,480,128,576,112C672,96,768,96,864,112C960,128,1056,160,1152,160C1248,160,1344,128,1392,112L1440,96L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z'%3E%3C/path%3E%3C/svg%3E") no-repeat;
+  background-size: cover;
+  animation: wave 10s linear infinite;
+}

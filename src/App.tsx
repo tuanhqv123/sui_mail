@@ -13,6 +13,8 @@ import Inbox from "./pages/Inbox";
 import Sent from "./pages/Sent";
 import Settings from "./pages/Settings";
 import Compose from "./pages/Compose";
+import Home from "./pages/Home";
+import "./pages/Home.css";
 import Sidebar from "./components/Sidebar";
 import ChatBubble from "./components/ChatBubble";
 import { useAuthStore } from "./store/useStore";
@@ -89,7 +91,8 @@ function App() {
           <Route path="/settings" element={<Settings />} />
         </Route>
 
-        <Route path="/" element={<Navigate to="/inbox" replace />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/home" element={<Home />} />
       </Routes>
     </Router>
   );
