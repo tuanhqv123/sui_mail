@@ -15,10 +15,14 @@ export const AI_CONFIG = {
   ].filter(Boolean),
 
   // Backend API URL (use this for secure proxy)
-  BACKEND_URL: import.meta.env.VITE_BACKEND_API_URL || null,
+  // Empty string "" means use /api (Vercel), undefined/null means direct API calls
+  BACKEND_URL:
+    import.meta.env.VITE_BACKEND_API_URL !== undefined
+      ? import.meta.env.VITE_BACKEND_API_URL
+      : null,
 
   // OpenRouter API endpoint
-  OPENROUTER_URL: 'https://openrouter.ai/api/v1/chat/completions',
+  OPENROUTER_URL: "https://openrouter.ai/api/v1/chat/completions",
 };
 
 /**
@@ -30,18 +34,21 @@ export async function makeAIChatRequest(
   apiKeyIndex = 0,
   modelIndex = 0
 ) {
-  // Use backend proxy if available (RECOMMENDED FOR SECURITY)
-  if (AI_CONFIG.BACKEND_URL !== null) {
+  // ALWAYS use backend proxy for security (PRODUCTION REQUIREMENT)
+  // If BACKEND_URL is set (even as empty string ""), use backend
+  if (AI_CONFIG.BACKEND_URL !== null && AI_CONFIG.BACKEND_URL !== undefined) {
     // If BACKEND_URL is empty string, use /api (Vercel default)
     // If it's a full URL like http://localhost:3001, use that
-    const endpoint = AI_CONFIG.BACKEND_URL 
-      ? `${AI_CONFIG.BACKEND_URL}/api/chat`  // Full URL for local dev
-      : '/api/chat';  // Relative path for Vercel
-    
+    const endpoint = AI_CONFIG.BACKEND_URL
+      ? `${AI_CONFIG.BACKEND_URL}/api/chat` // Full URL for local dev
+      : "/api/chat"; // Relative path for Vercel (when BACKEND_URL = "")
+
+    console.log(`🔒 Using secure backend endpoint: ${endpoint}`);
+
     const response = await fetch(endpoint, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         messages,
@@ -51,27 +58,34 @@ export async function makeAIChatRequest(
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Backend request failed: ${response.status}`, errorText);
       throw new Error(`Backend request failed: ${response.status}`);
     }
 
     return response.json();
   }
 
+  // This should NEVER run in production - only for local dev without backend
+  console.warn(
+    "⚠️ WARNING: Making INSECURE direct API call! API keys visible in browser!"
+  );
+
   // Direct API call (API KEY VISIBLE IN BROWSER - NOT SECURE!)
   const apiKey = AI_CONFIG.API_KEYS[apiKeyIndex];
   const model = AI_CONFIG.MODELS[modelIndex];
 
   if (!apiKey || !model) {
-    throw new Error('API configuration missing');
+    throw new Error("API configuration missing");
   }
 
   const response = await fetch(AI_CONFIG.OPENROUTER_URL, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
-      'HTTP-Referer': window.location.origin,
-      'X-Title': 'Sui Mail',
+      "HTTP-Referer": window.location.origin,
+      "X-Title": "Sui Mail",
     },
     body: JSON.stringify({
       model,

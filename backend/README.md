@@ -5,12 +5,14 @@ This backend server securely handles API keys for AI requests, preventing exposu
 ## Setup
 
 1. Install dependencies:
+
 ```bash
 cd backend
 npm install
 ```
 
 2. Start the server:
+
 ```bash
 npm run dev
 ```
@@ -20,11 +22,13 @@ The server will run on `http://localhost:3001`
 ## Endpoints
 
 ### Health Check
+
 ```
 GET /health
 ```
 
 ### AI Chat Proxy
+
 ```
 POST /api/chat
 Body: {

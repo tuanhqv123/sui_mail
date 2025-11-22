@@ -181,7 +181,7 @@ Example output format:
               apiKeyIndex,
               modelIndex
             );
-            
+
             result = apiResult.choices[0]?.message?.content;
             success = true;
           } catch (err) {

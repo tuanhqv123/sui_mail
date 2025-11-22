@@ -175,9 +175,13 @@ Current time: ${new Date().toLocaleString()}`;
 
       // Try with current configuration first
       try {
-        const response = await makeAIChatRequest(messagesForAPI, apiKeyIndex, modelIndex);
+        const response = await makeAIChatRequest(
+          messagesForAPI,
+          apiKeyIndex,
+          modelIndex
+        );
         success = true;
-        
+
         const assistantMessage: Message = {
           role: "assistant",
           content: response.choices[0]?.message?.content || "No response",
@@ -186,15 +190,19 @@ Current time: ${new Date().toLocaleString()}`;
         setMessages((prev) => [...prev, assistantMessage]);
       } catch (err) {
         lastError = err;
-        
+
         // Try switching model
         modelIndex = (modelIndex + 1) % AI_CONFIG.MODELS.length;
         setCurrentModelIndex(modelIndex);
-        
+
         try {
-          const response = await makeAIChatRequest(messagesForAPI, apiKeyIndex, modelIndex);
+          const response = await makeAIChatRequest(
+            messagesForAPI,
+            apiKeyIndex,
+            modelIndex
+          );
           success = true;
-          
+
           const assistantMessage: Message = {
             role: "assistant",
             content: response.choices[0]?.message?.content || "No response",
@@ -203,15 +211,19 @@ Current time: ${new Date().toLocaleString()}`;
           setMessages((prev) => [...prev, assistantMessage]);
         } catch (err2) {
           lastError = err2;
-          
+
           // Try switching API key
           apiKeyIndex = (apiKeyIndex + 1) % AI_CONFIG.API_KEYS.length;
           setCurrentApiKeyIndex(apiKeyIndex);
-          
+
           try {
-            const response = await makeAIChatRequest(messagesForAPI, apiKeyIndex, modelIndex);
+            const response = await makeAIChatRequest(
+              messagesForAPI,
+              apiKeyIndex,
+              modelIndex
+            );
             success = true;
-            
+
             const assistantMessage: Message = {
               role: "assistant",
               content: response.choices[0]?.message?.content || "No response",
@@ -225,7 +237,9 @@ Current time: ${new Date().toLocaleString()}`;
       }
 
       if (!success) {
-        setError(`Failed to get response after multiple attempts. Please try again.`);
+        setError(
+          `Failed to get response after multiple attempts. Please try again.`
+        );
       }
     } catch (err) {
       setError(
