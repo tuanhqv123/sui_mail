@@ -2,7 +2,7 @@ import { getFullnodeUrl } from "@mysten/sui/client";
 import { createNetworkConfig } from "@mysten/dapp-kit";
 
 export const PACKAGE_ID =
-  "0xc61badf8e39b10a013c8dcec4375397224058e8cbba0651f18c53382e312c79e";
+  "0x6eb14b5217b83d189d4026a1ee737ee493b7959bf874abbfb196bc72c649ada0";
 
 // Sui Network Configuration
 const { networkConfig, useNetworkVariable, useNetworkVariables } =

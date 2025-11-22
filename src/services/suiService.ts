@@ -405,9 +405,12 @@ export class SuiMailService {
         {
           onSuccess: async (result: any) => {
             try {
+              console.log("🔍 suiService.addMembersAndSendMail: Transaction success, waiting 2 seconds...");
               // Wait for transaction to complete
               await new Promise((r) => setTimeout(r, 2000));
 
+              console.log("🔍 suiService.addMembersAndSendMail: Getting transaction block for digest:", result.digest);
+              console.time("⏱️ getTransactionBlock call in addMembersAndSendMail");
               // Get the created mail from transaction effects
               const txResult = await this.client.getTransactionBlock({
                 digest: result.digest,
@@ -416,6 +419,8 @@ export class SuiMailService {
                   showObjectChanges: true,
                 },
               });
+              console.timeEnd("⏱️ getTransactionBlock call in addMembersAndSendMail");
+              console.log("🔍 suiService.addMembersAndSendMail: Transaction block retrieved successfully");
 
               let createdMailId = "";
 
@@ -436,6 +441,10 @@ export class SuiMailService {
                 console.warn("Could not find created mail ID, but mail was sent");
               }
 
+              console.log("🔍 suiService.addMembersAndSendMail: Resolving with result:", {
+                recipients: recipients,
+                mailId: createdMailId
+              });
               resolve({ recipients: recipients, mailId: createdMailId });
             } catch (error) {
               console.error("Error getting mail ID:", error);
@@ -850,11 +859,16 @@ export class SuiMailService {
 
   // Get all reply relationships for a user's mails
   async getMailThreadingForUser(userAddress: string): Promise<Map<string, string>> {
+    console.log("🔍 Getting mail threading for user:", userAddress);
+
     // First get all mail IDs for this user (both sent and received)
     const [sentMails, receivedMails] = await Promise.all([
       this.getSentMails(userAddress),
       this.getReceivedMails(userAddress),
     ]);
+
+    console.log("📤 Sent mails count:", sentMails.length);
+    console.log("📥 Received mails count:", receivedMails.length);
 
     // Extract all mail IDs
     const allMailIds = [
@@ -862,6 +876,11 @@ export class SuiMailService {
       ...receivedMails.map(mail => mail.data?.objectId).filter(Boolean),
     ];
 
-    return this.getMailReplyRelationships(allMailIds);
+    console.log("📋 All mail IDs to check for threading:", allMailIds);
+
+    const relationships = this.getMailReplyRelationships(allMailIds);
+    console.log("🔗 Final threading relationships:", relationships);
+
+    return relationships;
   }
 }

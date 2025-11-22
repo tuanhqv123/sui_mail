@@ -125,10 +125,23 @@ const Sent = () => {
     if (!currentAccount) return;
 
     setLoading(true);
+    console.log("📤 LOADING SENT MAILS for:", currentAccount.address);
     try {
       const mailObjects = await suiMailService.getSentMails(
         currentAccount.address
       );
+
+      console.log("📬 Total sent mail objects found:", mailObjects.length);
+
+      // Log all sent mail object IDs
+      mailObjects.forEach((mailObj, index) => {
+        console.log(`📤 Sent Mail ${index + 1}:`, {
+          objectId: mailObj.data?.objectId,
+          subject: mailObj.data?.content?.fields?.subject,
+          timestamp: mailObj.data?.content?.fields?.timestamp,
+          blobId: mailObj.data?.content?.fields?.blob_id,
+        });
+      });
 
       const parsedMails: SentMail[] = [];
 
@@ -231,6 +244,11 @@ const Sent = () => {
       }
 
       setSentMails(parsedMails);
+
+      // Store sent mails globally for AI assistant
+      if (typeof window !== 'undefined') {
+        (window as any).sentMails = parsedMails;
+      }
 
       // Resolve recipient names for all mails
       const allRecipients = new Set<string>();
@@ -440,7 +458,11 @@ const Sent = () => {
           {sentMails.map((mail) => (
             <div
               key={mail.id}
-              onClick={() => setSelectedEmail(mail)}
+              onClick={() => {
+              setSelectedEmail(mail);
+              // Make selected email available to chat assistant
+              (window as any).selectedEmail = mail;
+            }}
               className="p-4 rounded-2xl border border-gray hover:bg-muted cursor-pointer transition-colors"
             >
               <div className="flex justify-between items-start mb-2">

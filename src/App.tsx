@@ -4,6 +4,7 @@ import {
      Route,
      Navigate,
      Outlet,
+     useLocation,
 } from "react-router-dom";
 import { Menu } from "lucide-react";
 import { useState } from "react";
@@ -13,6 +14,7 @@ import Sent from "./pages/Sent";
 import Settings from "./pages/Settings";
 import Compose from "./pages/Compose";
 import Sidebar from "./components/Sidebar";
+import ChatBubble from "./components/ChatBubble";
 import { useAuthStore } from "./store/useStore";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -25,6 +27,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 const Layout = () => {
      const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+     const location = useLocation();
 
      return (
           <div className="flex h-screen bg-secondary p-4 gap-4 overflow-hidden relative">
@@ -32,6 +35,9 @@ const Layout = () => {
                <div className="hidden md:block h-full">
                     <Sidebar />
                </div>
+
+               {/* Chat Bubble - Hidden on compose page */}
+               {location.pathname !== '/compose' && <ChatBubble />}
 
                {/* Mobile Menu Button */}
                {!isMobileMenuOpen && (

@@ -22,9 +22,6 @@ const ErrorModal: React.FC<ErrorModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-              <AlertTriangle size={20} className="text-red-600" />
-            </div>
             <h3 className="text-lg font-bold text-black">{title}</h3>
           </div>
           <button

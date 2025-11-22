@@ -92,6 +92,26 @@ const Inbox = () => {
     }
   }, [sessionInitialized]);
 
+  // Listen for manual refresh triggers from Compose page
+  useEffect(() => {
+    const checkForRefreshTrigger = () => {
+      if ((window as any).forceInboxRefresh) {
+        console.log("🔄 Refresh trigger detected, reloading emails...");
+        loadEmails();
+        // Clear the trigger
+        (window as any).forceInboxRefresh = null;
+      }
+    };
+
+    // Check immediately
+    checkForRefreshTrigger();
+
+    // Set up interval to check for refresh triggers
+    const interval = setInterval(checkForRefreshTrigger, 1000);
+
+    return () => clearInterval(interval);
+  }, [currentAccount, sessionInitialized]);
+
   const initializeDecryptionSession = async () => {
     if (!currentAccount || sessionInitialized) return;
 
@@ -105,7 +125,6 @@ const Inbox = () => {
         }
       );
       setSessionInitialized(true);
-      console.log("✅ Session initialized successfully in Inbox");
     } catch (error) {
       console.error("Failed to initialize decryption session:", error);
       alert("Failed to initialize decryption session. Please try again.");
@@ -134,10 +153,19 @@ const Inbox = () => {
   };
 
   const loadParentMail = async (parentMailId: string) => {
+    console.log("🔍 LOADING PARENT MAIL:", parentMailId);
     setLoadingParent(true);
     try {
       // Get the mail object
+      console.log("📡 Fetching parent mail object...");
       const mailObject = await suiMailService.getMailById(parentMailId);
+      console.log("✅ Parent mail object received:", {
+        objectId: mailObject.data?.objectId,
+        subject: mailObject.data?.content?.fields?.subject,
+        sender: mailObject.data?.content?.fields?.sender,
+        timestamp: mailObject.data?.content?.fields?.timestamp,
+        reply_count: mailObject.data?.content?.fields?.reply_count,
+      });
 
       if (mailObject.data?.content && "fields" in mailObject.data.content) {
         const fields = mailObject.data.content.fields as any;
@@ -207,7 +235,17 @@ const Inbox = () => {
 
       // Load parent mail if this email has one
       if (selectedEmail.parentMailId) {
+        console.log("🔗 SELECTED EMAIL HAS PARENT:", {
+          selectedEmailId: selectedEmail.id,
+          parentMailId: selectedEmail.parentMailId,
+          subject: selectedEmail.subject,
+        });
         loadParentMail(selectedEmail.parentMailId);
+      } else {
+        console.log("📧 SELECTED EMAIL (no parent):", {
+          selectedEmailId: selectedEmail.id,
+          subject: selectedEmail.subject,
+        });
       }
     }
   }, [selectedEmail]);
@@ -230,15 +268,65 @@ const Inbox = () => {
     if (!currentAccount) return;
 
     setLoading(true);
+    console.log("📥 LOADING INBOX MAILS for:", currentAccount.address);
     try {
       const mailObjects = await suiMailService.getReceivedMails(
         currentAccount.address
       );
 
+      console.log("📬 Total received mail objects found:", mailObjects.length);
+
+      // Log all received mail object IDs
+      mailObjects.forEach((mailObj, index) => {
+        const mailId = mailObj.data?.objectId;
+        console.log(`📥 Received Mail ${index + 1}:`, {
+          objectId: mailId,
+          subject: mailObj.data?.content?.fields?.subject,
+          timestamp: mailObj.data?.content?.fields?.timestamp,
+          blobId: mailObj.data?.content?.fields?.blob_id,
+        });
+      });
+
       // Get mail threading relationships
       const mailThreading = await suiMailService.getMailThreadingForUser(
         currentAccount.address
       );
+
+      console.log("🔗 Mail threading relationships found:", mailThreading.size);
+
+      // Log all threading relationships
+      mailThreading.forEach((parentMailId, replyMailId) => {
+        console.log(`🔗 Threading: Reply ${replyMailId} -> Parent ${parentMailId}`);
+      });
+
+      // Specifically check for the reply we know about
+      const targetReplyId = "0x43c6d3f04f2ee2563b8c4e0883b926c0e4e05530039297f9f376a5fbf840b9fb";
+      const targetReplyFound = mailObjects.some(mail => mail.data?.objectId === targetReplyId);
+      const targetReplyParent = mailThreading.get(targetReplyId);
+
+      console.log(`🎯 TARGET REPLY ANALYSIS for ${targetReplyId}:`);
+      console.log(`   Found in received mails: ${targetReplyFound}`);
+      console.log(`   Parent mail ID: ${targetReplyParent || 'NOT FOUND'}`);
+      console.log(`   Threading working: ${targetReplyFound && targetReplyParent ? 'YES' : 'NO'}`);
+
+      // Also check for 0xc2fd95 (the reply you clicked)
+      const clickedReplyId = "0xc2fd95b4635e017f91c0042b1a55299fc486b8324346cf9dec2ac12063615329";
+      const clickedReplyFound = mailObjects.some(mail => mail.data?.objectId === clickedReplyId);
+      const clickedReplyParent = mailThreading.get(clickedReplyId);
+
+      console.log(`🎯 CLICKED REPLY ANALYSIS for ${clickedReplyId}:`);
+      console.log(`   Found in received mails: ${clickedReplyFound}`);
+      console.log(`   Parent mail ID: ${clickedReplyParent || 'NOT FOUND'}`);
+      console.log(`   Parent matches target: ${clickedReplyParent === targetReplyId ? 'YES' : 'NO'}`);
+      console.log(`   Threading working: ${clickedReplyFound && clickedReplyParent ? 'YES' : 'NO'}`);
+
+      // Check for any new replies after our last test
+      console.log(`📋 ALL REPLY THREADING RELATIONSHIPS:`);
+      mailThreading.forEach((parentMailId, replyMailId) => {
+        if (replyMailId.includes('0xc2fd95') || parentMailId.includes('0x43c6d3f')) {
+          console.log(`   Related: Reply ${replyMailId} -> Parent ${parentMailId}`);
+        }
+      });
 
       const parsedEmails: Email[] = [];
 
@@ -347,6 +435,11 @@ const Inbox = () => {
       }
 
       setEmails(parsedEmails);
+
+      // Store inbox mails globally for AI assistant
+      if (typeof window !== 'undefined') {
+        (window as any).inboxMails = parsedEmails;
+      }
     } catch (error) {
       console.error("Failed to load emails:", error);
     } finally {
@@ -628,7 +721,11 @@ const Inbox = () => {
           {emails.map((email) => (
             <div
               key={email.id}
-              onClick={() => setSelectedEmail(email)}
+              onClick={() => {
+              setSelectedEmail(email);
+              // Make selected email available to chat assistant
+              (window as any).selectedEmail = email;
+            }}
               className={`p-4 rounded-2xl border border-gray hover:bg-muted cursor-pointer transition-colors group ${
                 email.unread ? "bg-muted/85" : "bg-gray"
               }`}

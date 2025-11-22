@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
+  ],
+  "env": {
+    "VITE_AI_API_KEY_1": "@vite_ai_api_key_1",
+    "VITE_AI_API_KEY_2": "@vite_ai_api_key_2",
+    "VITE_AI_API_KEY_3": "@vite_ai_api_key_3",
+    "VITE_AI_MODEL_1": "@vite_ai_model_1",
+    "VITE_AI_MODEL_2": "@vite_ai_model_2",
+    "VITE_AI_MODEL_3": "@vite_ai_model_3"
+  }
+}
