@@ -31,8 +31,14 @@ export async function makeAIChatRequest(
   modelIndex = 0
 ) {
   // Use backend proxy if available (RECOMMENDED FOR SECURITY)
-  if (AI_CONFIG.BACKEND_URL) {
-    const response = await fetch(`${AI_CONFIG.BACKEND_URL}/api/chat`, {
+  if (AI_CONFIG.BACKEND_URL !== null) {
+    // If BACKEND_URL is empty string, use /api (Vercel default)
+    // If it's a full URL like http://localhost:3001, use that
+    const endpoint = AI_CONFIG.BACKEND_URL 
+      ? `${AI_CONFIG.BACKEND_URL}/api/chat`  // Full URL for local dev
+      : '/api/chat';  // Relative path for Vercel
+    
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
