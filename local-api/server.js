@@ -2,7 +2,8 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 
-dotenv.config({ path: "../.env" });
+// Load environment variables
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -11,7 +12,7 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// API Keys and Models (loaded from environment)
+// API Keys and Models (from environment variables)
 const API_KEYS = [
   process.env.VITE_AI_API_KEY_1,
   process.env.VITE_AI_API_KEY_2,
@@ -29,7 +30,7 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Proxy endpoint for AI chat
+// Proxy endpoint for AI chat (same as Vercel function)
 app.post("/api/chat", async (req, res) => {
   try {
     const { messages, apiKeyIndex = 0, modelIndex = 0 } = req.body;
@@ -42,10 +43,19 @@ app.post("/api/chat", async (req, res) => {
     const model = MODELS[modelIndex % MODELS.length];
 
     if (!apiKey || !model) {
-      return res.status(500).json({ error: "API configuration error" });
+      console.error("Missing API configuration:", {
+        apiKeyCount: API_KEYS.length,
+        modelCount: MODELS.length,
+        apiKeyIndex,
+        modelIndex
+      });
+      return res.status(500).json({
+        error: "API configuration error",
+        details: "Missing API keys or models in environment variables"
+      });
     }
 
-    console.log(`🤖 Making AI request with model: ${model}`);
+    console.log(`Making AI request with model: ${model}`);
 
     const response = await fetch(
       "https://openrouter.ai/api/v1/chat/completions",
@@ -68,7 +78,12 @@ app.post("/api/chat", async (req, res) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("❌ AI API Error:", errorText);
+      console.error("AI API Error:", {
+        status: response.status,
+        error: errorText,
+        model,
+        apiKeyIndex: apiKeyIndex % API_KEYS.length
+      });
       return res.status(response.status).json({
         error: "AI API request failed",
         details: errorText,
@@ -76,11 +91,11 @@ app.post("/api/chat", async (req, res) => {
     }
 
     const data = await response.json();
-    console.log("✅ AI request successful");
+    console.log("AI request successful");
 
-    res.json(data);
+    res.status(200).json(data);
   } catch (error) {
-    console.error("❌ Chat proxy error:", error);
+    console.error("Chat proxy error:", error);
     res.status(500).json({
       error: "Internal server error",
       message: error instanceof Error ? error.message : "Unknown error",
@@ -90,7 +105,8 @@ app.post("/api/chat", async (req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Backend server running on http://localhost:${PORT}`);
-  console.log(`📝 API Keys loaded: ${API_KEYS.length}`);
+  console.log(`🚀 Local API server running on http://localhost:${PORT}`);
+  console.log(`🔐 API Keys loaded: ${API_KEYS.length}`);
   console.log(`🤖 Models available: ${MODELS.length}`);
+  console.log(`📡 Proxy endpoint: http://localhost:${PORT}/api/chat`);
 });

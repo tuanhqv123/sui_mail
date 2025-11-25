@@ -178,7 +178,7 @@ export class MailDecryptionService {
     this.saveSessionKeyToStorage(sessionKey, userAddress);
 
     console.log(
-      "💾 Session key cached, expires at:",
+      "Session key cached, expires at:",
       new Date(expiresAt).toLocaleString()
     );
   }
@@ -194,9 +194,7 @@ export class MailDecryptionService {
   ): Promise<void> {
     // Prevent multiple simultaneous initializations
     if (this.isInitializing) {
-      console.log(
-        "⏳ Session key initialization already in progress, waiting..."
-      );
+      console.log("Session key initialization already in progress, waiting...");
 
       // Wait for initialization to complete (polling approach)
       while (this.isInitializing) {
@@ -205,7 +203,7 @@ export class MailDecryptionService {
 
       // If after waiting we have a valid session key, return it
       if (this.isSessionKeyValid()) {
-        console.log("♻️ Using session key from previous initialization");
+        console.log("Using session key from previous initialization");
         this.sessionKey = this.cachedSessionKey!.sessionKey;
         return;
       }
@@ -213,13 +211,13 @@ export class MailDecryptionService {
 
     // Check if we have a valid cached session key
     if (this.isSessionKeyValid()) {
-      console.log("♻️ Using cached session key (from localStorage or memory)");
+      console.log("Using cached session key (from localStorage or memory)");
       this.sessionKey = this.cachedSessionKey!.sessionKey;
       return;
     }
 
     this.isInitializing = true;
-    console.log("🔐 Creating new session key");
+    console.log("Creating new session key");
 
     try {
       this.sessionKey = await SealEncryptionService.createSessionKey(
@@ -229,7 +227,7 @@ export class MailDecryptionService {
 
       // Cache the new session key with user address for localStorage persistence
       this.cacheSessionKey(this.sessionKey, userAddress);
-      console.log("✅ Session key initialized and cached successfully");
+      console.log("Session key initialized and cached successfully");
     } finally {
       this.isInitializing = false;
     }

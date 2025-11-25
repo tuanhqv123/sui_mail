@@ -78,19 +78,42 @@ export class SealEncryptionService {
     encryptedObject: Uint8Array;
     backupKey: Uint8Array;
   }> {
-    const id = allowlistId.replace("0x", "");
+    try {
+      // Validate allowlist ID format
+      if (!allowlistId || typeof allowlistId !== "string") {
+        throw new Error("Invalid allowlist ID: must be a non-empty string");
+      }
 
-    const result = await this.client.encrypt({
-      threshold: SEAL_THRESHOLD,
-      packageId: PACKAGE_ID.replace("0x", ""),
-      id: id,
-      data,
-    });
+      // Check if it's a valid hex string (after removing 0x prefix)
+      const id = allowlistId.replace("0x", "");
+      if (!/^[0-9a-fA-F]+$/.test(id)) {
+        throw new Error(
+          "Invalid allowlist ID: must be a valid hexadecimal string"
+        );
+      }
 
-    return {
-      encryptedObject: result.encryptedObject,
-      backupKey: result.key,
-    };
+      const result = await this.client.encrypt({
+        threshold: SEAL_THRESHOLD,
+        packageId: PACKAGE_ID.replace("0x", ""),
+        id: id,
+        data,
+      });
+
+      return {
+        encryptedObject: result.encryptedObject,
+        backupKey: result.key,
+      };
+    } catch (error) {
+      // Re-throw with more context
+      if (error instanceof Error) {
+        throw new Error(
+          `Seal encryption failed for allowlist ${allowlistId}: ${error.message}`
+        );
+      }
+      throw new Error(
+        `Seal encryption failed for allowlist ${allowlistId}: Unknown error`
+      );
+    }
   }
 
   /**
@@ -290,33 +313,16 @@ export class SealEncryptionService {
     ) => Promise<{ signature: string }>,
     ttlMin: number = 10
   ): Promise<SessionKey> {
-    console.log("🔐 createSessionKey called:");
-    console.log("  - userAddress:", userAddress);
-    console.log("  - ttlMin:", ttlMin);
-
-    // Use the fresh client created in constructor (reuse same instance)
-    console.log("🔧 Using freshClient from constructor for SessionKey");
-    console.log("🔧 Fresh client type:", this.freshClient?.constructor?.name);
-
-    // CRITICAL: packageId MUST match what was used during encryption
-    // Our encryption uses PACKAGE_ID (sui_mail package), so SessionKey must use the same
     const createParams = {
       address: userAddress,
       packageId: PACKAGE_ID.replace("0x", ""),
       ttlMin,
       suiClient: this.freshClient,
     };
-    console.log("🔧 SessionKey.create params:", {
-      address: createParams.address,
-      packageId: createParams.packageId,
-      ttlMin: createParams.ttlMin,
-      suiClientDefined: !!createParams.suiClient,
-    });
 
     let sessionKey: SessionKey;
     try {
       sessionKey = await SessionKey.create(createParams);
-      console.log("✅ SessionKey created successfully");
     } catch (error) {
       console.error("❌ SessionKey.create failed:", error);
       console.error("❌ Error details:", {
@@ -328,29 +334,11 @@ export class SealEncryptionService {
 
     // Get the message to sign
     const message = sessionKey.getPersonalMessage();
-    console.log("📝 Personal message to sign:", {
-      messageLength: message.length,
-      messageHex: Array.from(message.slice(0, 32))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join(""),
-    });
 
     // User signs the message in wallet
     const { signature } = await signPersonalMessage(message);
-    console.log("✍️ User signature received:", {
-      signatureLength: signature.length,
-      signaturePreview: signature.substring(0, 20) + "...",
-    });
 
-    // Complete session key initialization
     sessionKey.setPersonalMessageSignature(signature);
-    console.log("✅ Signature set on SessionKey");
-
-    // Validate session key by checking its properties
-    console.log("🔍 Session key validation:");
-    console.log("  - Session key created successfully");
-    console.log("  - Session key packageId:", sessionKey.getPackageId());
-    console.log("  - Session key valid:", !!sessionKey);
 
     return sessionKey;
   }

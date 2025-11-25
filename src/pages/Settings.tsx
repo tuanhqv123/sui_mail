@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import Button from "../components/Button";
+import ErrorModal from "../components/ErrorModal";
 import { X, Loader2 } from "lucide-react";
 import {
   useCurrentAccount,
@@ -15,11 +16,43 @@ const Settings = () => {
   const [profileId, setProfileId] = useState<string | null>(null);
   const [hasProfile, setHasProfile] = useState(false);
 
+  // Modal state for success/error messages
+  const [modal, setModal] = useState({
+    isOpen: false,
+    title: "",
+    message: "",
+  });
+
   const currentAccount = useCurrentAccount();
   const suiClient = useSuiClient();
   const { mutate: signAndExecute } = useSignAndExecuteTransaction();
 
   const suiMailService = new SuiMailService(suiClient);
+
+  // Helper functions for showing modals
+  const showSuccess = (title: string, message: string) => {
+    setModal({
+      isOpen: true,
+      title: title,
+      message: message,
+    });
+  };
+
+  const showError = (title: string, message: string) => {
+    setModal({
+      isOpen: true,
+      title: title,
+      message: message,
+    });
+  };
+
+  const closeModal = () => {
+    setModal({
+      isOpen: false,
+      title: "",
+      message: "",
+    });
+  };
 
   useEffect(() => {
     if (currentAccount) {
@@ -31,16 +64,16 @@ const Settings = () => {
     if (!currentAccount) return;
 
     try {
-      const profile = await suiMailService.getUserProfile(
+      const profileId = await suiMailService.getUserProfile(
         currentAccount.address
       );
 
-      if (profile && profile.data) {
+      if (profileId) {
         setHasProfile(true);
-        setProfileId(profile.data.objectId);
+        setProfileId(profileId);
 
         // Load blocked users from the profile
-        await loadBlacklist(profile.data.objectId);
+        await loadBlacklist(profileId);
       } else {
         setHasProfile(false);
         setBlacklist([]);
@@ -65,7 +98,7 @@ const Settings = () => {
 
   const handleCreateProfile = async () => {
     if (!currentAccount) {
-      alert("Please connect your wallet");
+      showError("Wallet Required", "Please connect your wallet");
       return;
     }
 
@@ -91,11 +124,11 @@ const Settings = () => {
         });
       });
 
-      alert("Profile created successfully!");
+      showSuccess("Profile Created", "Your profile has been created successfully!");
       await loadProfile();
     } catch (error) {
       console.error("Failed to create profile:", error);
-      alert("Failed to create profile");
+      showError("Profile Creation Failed", "Failed to create profile. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -103,7 +136,7 @@ const Settings = () => {
 
   const handleAddBlacklist = async () => {
     if (!blacklistInput.trim() || !profileId) {
-      alert("Please enter an address to blacklist");
+      showError("Invalid Input", "Please enter an address to blacklist");
       return;
     }
 
@@ -135,10 +168,10 @@ const Settings = () => {
 
       setBlacklist([...blacklist, blacklistInput.trim()]);
       setBlacklistInput("");
-      alert("User blacklisted successfully!");
+      showSuccess("User Blacklisted", "The user has been successfully added to your blacklist.");
     } catch (error) {
       console.error("Failed to blacklist user:", error);
-      alert("Failed to blacklist user");
+      showError("Blacklist Failed", "Failed to blacklist user. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -174,10 +207,10 @@ const Settings = () => {
       });
 
       setBlacklist(blacklist.filter((i) => i !== address));
-      alert("User removed from blacklist!");
+      showSuccess("User Removed", "The user has been successfully removed from your blacklist.");
     } catch (error) {
       console.error("Failed to remove from blacklist:", error);
-      alert("Failed to remove from blacklist");
+      showError("Remove Failed", "Failed to remove user from blacklist. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -276,6 +309,14 @@ const Settings = () => {
           )}
         </div>
       </div>
+
+      {/* Success/Error Modal */}
+      <ErrorModal
+        isOpen={modal.isOpen}
+        onClose={closeModal}
+        title={modal.title}
+        message={modal.message}
+      />
     </div>
   );
 };

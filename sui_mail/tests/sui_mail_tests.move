@@ -50,7 +50,6 @@ fun test_add_to_blacklist() {
     sui_mail::add_to_blacklist(
         &mut profile,
         BOB,
-        string::utf8(b"Spammer"),
         test_scenario::ctx(&mut scenario),
     );
 
@@ -70,7 +69,6 @@ fun test_remove_from_blacklist() {
     sui_mail::add_to_blacklist(
         &mut profile,
         BOB,
-        string::utf8(b"Spammer"),
         test_scenario::ctx(&mut scenario),
     );
 
@@ -98,7 +96,6 @@ fun test_duplicate_blacklist_fails() {
     sui_mail::add_to_blacklist(
         &mut profile,
         BOB,
-        string::utf8(b"Spammer"),
         test_scenario::ctx(&mut scenario),
     );
 
@@ -106,7 +103,6 @@ fun test_duplicate_blacklist_fails() {
     sui_mail::add_to_blacklist(
         &mut profile,
         BOB,
-        string::utf8(b"Spammer"),
         test_scenario::ctx(&mut scenario),
     );
 
@@ -124,7 +120,6 @@ fun test_blacklist_only_owner() {
     sui_mail::add_to_blacklist(
         &mut profile,
         CHARLIE,
-        string::utf8(b"Test"),
         test_scenario::ctx(&mut scenario),
     );
 
@@ -141,7 +136,7 @@ fun test_create_allowlist() {
     let allowlist = test_scenario::take_shared<Allowlist>(&scenario);
 
     assert!(sui_mail::get_allowlist_owner(&allowlist) == ALICE, 0);
-    assert!(sui_mail::get_allowlist_member_count(&allowlist) == 0, 1);
+    assert!(sui_mail::get_allowlist_member_count(&allowlist) == 1, 1);
 
     test_scenario::return_shared(allowlist);
     sui_mail::destroy_cap_for_testing(cap);
@@ -167,7 +162,7 @@ fun test_add_member() {
     );
 
     assert!(sui_mail::is_member(&allowlist, BOB), 0);
-    assert!(sui_mail::get_allowlist_member_count(&allowlist) == 1, 1);
+    assert!(sui_mail::get_allowlist_member_count(&allowlist) == 2, 1);
 
     test_scenario::return_shared(allowlist);
     sui_mail::destroy_profile_for_testing(alice_profile);
@@ -187,7 +182,6 @@ fun test_add_member_fails_when_blacklisted() {
     sui_mail::add_to_blacklist(
         &mut bob_profile,
         ALICE,
-        string::utf8(b"Privacy"),
         test_scenario::ctx(&mut scenario),
     );
 
@@ -238,7 +232,7 @@ fun test_remove_member() {
     );
 
     assert!(!sui_mail::is_member(&allowlist, BOB), 0);
-    assert!(sui_mail::get_allowlist_member_count(&allowlist) == 0, 1);
+    assert!(sui_mail::get_allowlist_member_count(&allowlist) == 1, 1);
 
     test_scenario::return_shared(allowlist);
     sui_mail::destroy_profile_for_testing(alice_profile);
@@ -294,13 +288,6 @@ fun test_create_mail() {
     let mut allowlist = test_scenario::take_shared<Allowlist>(&scenario);
 
     test_scenario::next_tx(&mut scenario, ALICE);
-    sui_mail::add_member(
-        &mut allowlist,
-        &cap,
-        ALICE,
-        &alice_profile,
-        test_scenario::ctx(&mut scenario),
-    );
     sui_mail::add_member(
         &mut allowlist,
         &cap,
@@ -364,13 +351,6 @@ fun test_add_reply() {
     let mut allowlist = test_scenario::take_shared<Allowlist>(&scenario);
 
     test_scenario::next_tx(&mut scenario, ALICE);
-    sui_mail::add_member(
-        &mut allowlist,
-        &cap,
-        ALICE,
-        &alice_profile,
-        test_scenario::ctx(&mut scenario),
-    );
     sui_mail::add_member(
         &mut allowlist,
         &cap,
@@ -442,13 +422,6 @@ fun test_full_mail_flow() {
     sui_mail::add_member(
         &mut allowlist,
         &cap,
-        ALICE,
-        &alice_profile,
-        test_scenario::ctx(&mut scenario),
-    );
-    sui_mail::add_member(
-        &mut allowlist,
-        &cap,
         BOB,
         &bob_profile,
         test_scenario::ctx(&mut scenario),
@@ -470,5 +443,153 @@ fun test_full_mail_flow() {
     sui_mail::destroy_profile_for_testing(bob_profile);
     sui_mail::destroy_cap_for_testing(cap);
     sui_mail::destroy_mail_for_testing(mail);
+    test_scenario::end(scenario);
+}
+
+#[test]
+fun test_create_task() {
+    let mut scenario = test_scenario::begin(ALICE);
+    let cap = create_test_allowlist(&mut scenario, ALICE);
+
+    test_scenario::next_tx(&mut scenario, ALICE);
+    let mut allowlist = test_scenario::take_shared<Allowlist>(&scenario);
+
+    test_scenario::next_tx(&mut scenario, ALICE);
+    sui_mail::add_member_by_address(
+        &mut allowlist,
+        &cap,
+        BOB,
+        test_scenario::ctx(&mut scenario),
+    );
+
+    test_scenario::next_tx(&mut scenario, ALICE);
+    let task = sui_mail::create_task(
+        string::utf8(b"task_blob_123"),
+        BOB,
+        0,
+        0,
+        &mut allowlist,
+        test_scenario::ctx(&mut scenario),
+    );
+
+    assert!(sui_mail::get_task_creator(&task) == ALICE, 0);
+    assert!(sui_mail::get_task_assignee(&task) == BOB, 1);
+    assert!(sui_mail::get_task_status(&task) == 0, 2);
+    assert!(sui_mail::get_task_blob_id(&task) == string::utf8(b"task_blob_123"), 3);
+
+    sui_mail::destroy_cap_for_testing(cap);
+    sui_mail::destroy_task_for_testing(task);
+    test_scenario::return_shared(allowlist);
+    test_scenario::end(scenario);
+}
+
+#[test]
+fun test_edit_task() {
+    let mut scenario = test_scenario::begin(ALICE);
+    let cap = create_test_allowlist(&mut scenario, ALICE);
+
+    test_scenario::next_tx(&mut scenario, ALICE);
+    let mut allowlist = test_scenario::take_shared<Allowlist>(&scenario);
+
+    test_scenario::next_tx(&mut scenario, ALICE);
+    let mut task = sui_mail::create_task(
+        string::utf8(b"original_blob_123"),
+        ALICE,
+        0,
+        0,
+        &mut allowlist,
+        test_scenario::ctx(&mut scenario),
+    );
+
+    test_scenario::next_tx(&mut scenario, ALICE);
+    sui_mail::edit_task(
+        &mut task,
+        &allowlist,
+        string::utf8(b"edited_blob_456"),
+        ALICE,
+        test_scenario::ctx(&mut scenario),
+    );
+
+    assert!(sui_mail::get_task_blob_id(&task) == string::utf8(b"edited_blob_456"), 0);
+    assert!(sui_mail::get_task_assignee(&task) == ALICE, 1);
+
+    sui_mail::destroy_cap_for_testing(cap);
+    sui_mail::destroy_task_for_testing(task);
+    test_scenario::return_shared(allowlist);
+    test_scenario::end(scenario);
+}
+
+#[test]
+fun test_update_task_status() {
+    let mut scenario = test_scenario::begin(ALICE);
+    let cap = create_test_allowlist(&mut scenario, ALICE);
+
+    test_scenario::next_tx(&mut scenario, ALICE);
+    let mut allowlist = test_scenario::take_shared<Allowlist>(&scenario);
+
+    test_scenario::next_tx(&mut scenario, ALICE);
+    sui_mail::add_member_by_address(
+        &mut allowlist,
+        &cap,
+        BOB,
+        test_scenario::ctx(&mut scenario),
+    );
+
+    test_scenario::next_tx(&mut scenario, ALICE);
+    let mut task = sui_mail::create_task(
+        string::utf8(b"task_blob_123"),
+        BOB,
+        0,
+        0,
+        &mut allowlist,
+        test_scenario::ctx(&mut scenario),
+    );
+
+    test_scenario::next_tx(&mut scenario, BOB);
+    sui_mail::update_task_status(
+        &mut task,
+        1,
+        test_scenario::ctx(&mut scenario),
+    );
+
+    assert!(sui_mail::get_task_status(&task) == 1, 0);
+
+    sui_mail::destroy_cap_for_testing(cap);
+    sui_mail::destroy_task_for_testing(task);
+    test_scenario::return_shared(allowlist);
+    test_scenario::end(scenario);
+}
+
+#[test]
+fun test_delete_task() {
+    let mut scenario = test_scenario::begin(ALICE);
+    let cap = create_test_allowlist(&mut scenario, ALICE);
+
+    test_scenario::next_tx(&mut scenario, ALICE);
+    let mut allowlist = test_scenario::take_shared<Allowlist>(&scenario);
+
+    test_scenario::next_tx(&mut scenario, ALICE);
+    let mut task = sui_mail::create_task(
+        string::utf8(b"task_blob_123"),
+        ALICE,
+        0,
+        0,
+        &mut allowlist,
+        test_scenario::ctx(&mut scenario),
+    );
+
+    test_scenario::next_tx(&mut scenario, ALICE);
+    sui_mail::delete_task(
+        &mut task,
+        &mut allowlist,
+        test_scenario::ctx(&mut scenario),
+    );
+
+    assert!(sui_mail::get_task_deleted(&task), 0);
+    assert!(sui_mail::get_allowlist_task_count(&allowlist) == 0, 1);
+
+    sui_mail::destroy_cap_for_testing(cap);
+    sui_mail::destroy_task_for_testing(task);
+    test_scenario::return_shared(allowlist);
     test_scenario::end(scenario);
 }

@@ -34,6 +34,11 @@ export async function makeAIChatRequest(
   apiKeyIndex = 0,
   modelIndex = 0
 ) {
+  // Diagnostic debug: log runtime configuration (safe — no API keys printed)
+  console.log("makeAIChatRequest: BACKEND_URL=", AI_CONFIG.BACKEND_URL);
+  console.log("makeAIChatRequest: API_KEYS count=", AI_CONFIG.API_KEYS.length);
+  console.log("makeAIChatRequest: MODELS count=", AI_CONFIG.MODELS.length);
+
   // ALWAYS use backend proxy for security (PRODUCTION REQUIREMENT)
   // If BACKEND_URL is set (even as empty string ""), use backend
   if (AI_CONFIG.BACKEND_URL !== null && AI_CONFIG.BACKEND_URL !== undefined) {

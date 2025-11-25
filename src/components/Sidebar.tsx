@@ -1,4 +1,11 @@
-import { Inbox, Send, Settings, Pencil, LogOut } from "lucide-react";
+import {
+  Inbox,
+  Send,
+  Settings,
+  Pencil,
+  LogOut,
+  CheckSquare,
+} from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useAuthStore } from "../store/useStore";
 import {
@@ -18,6 +25,7 @@ const Sidebar = ({ onItemClick }: SidebarProps) => {
 
   const navItems = [
     { to: "/compose", icon: Pencil, label: "Compose" },
+    { to: "/tasks", icon: CheckSquare, label: "Tasks" },
     { to: "/inbox", icon: Inbox, label: "Inbox" },
     { to: "/sent", icon: Send, label: "Sent" },
     { to: "/settings", icon: Settings, label: "Settings" },

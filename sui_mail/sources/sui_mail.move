@@ -12,6 +12,9 @@ use sui::package;
 
 const VERSION: u64 = 1;
 const MAX_STRING_LENGTH: u64 = 256;
+const TASK_STATUS_TODO: u8 = 0;
+const TASK_STATUS_IN_PROGRESS: u8 = 1;
+const TASK_STATUS_DONE: u8 = 2;
 
 // ===== ERROR CODES =====
 
@@ -23,6 +26,8 @@ const EInvalidVersion: u64 = 4;
 const EDuplicate: u64 = 5;
 const EStringTooLong: u64 = 6;
 const ENotOwner: u64 = 7;
+const EInvalidStatus: u64 = 8;
+const EInvalidTime: u64 = 9;
 
 // ===== STRUCTS =====
 
@@ -51,6 +56,7 @@ public struct Allowlist has key {
     name: String,
     description: String,
     member_count: u64,
+    task_count: u64,
     created_at: u64,
     updated_at: u64,
 }
@@ -80,6 +86,20 @@ public struct ReplyEntry has copy, drop, store {
     mail_id: object::ID,
     sender: address,
     timestamp: u64,
+}
+
+public struct Task has key {
+    id: object::UID,
+    creator: address,
+    assignee: address,
+    blob_id: String,
+    status: u8,
+    deleted: bool,
+    deadline: u64,
+    start_time: u64,
+    allowlist_id: object::ID,
+    created_at: u64,
+    updated_at: u64,
 }
 
 // ===== EVENTS =====
@@ -139,6 +159,34 @@ public struct SealApproved has copy, drop {
     allowlist_id: object::ID,
     blob_id: vector<u8>,
     timestamp: u64,
+}
+
+public struct TaskCreated has copy, drop {
+    task_id: object::ID,
+    creator: address,
+    assignee: address,
+    allowlist_id: object::ID,
+}
+
+public struct TaskUpdated has copy, drop {
+    task_id: object::ID,
+    updater: address,
+    new_status: u8,
+    updated_at: u64,
+}
+
+public struct TaskDeleted has copy, drop {
+    task_id: object::ID,
+    deleter: address,
+    deleted_at: u64,
+}
+
+public struct TaskEdited has copy, drop {
+    task_id: object::ID,
+    editor: address,
+    new_blob_id: String,
+    new_assignee: address,
+    edited_at: u64,
 }
 
 // ===== INITIALIZATION =====
@@ -253,30 +301,53 @@ public fun create_allowlist(
     assert!(string::length(&name) <= MAX_STRING_LENGTH, EStringTooLong);
     assert!(string::length(&description) <= MAX_STRING_LENGTH, EStringTooLong);
 
-    let allowlist = Allowlist {
+    let mut allowlist = Allowlist {
         id: object::new(ctx),
         owner: tx_context::sender(ctx),
         name,
         description,
         member_count: 0,
+        task_count: 0,
         created_at: tx_context::epoch(ctx),
         updated_at: tx_context::epoch(ctx),
     };
 
     let allowlist_id = object::id(&allowlist);
+    let owner = allowlist.owner;
+
+    let cap = Cap {
+        id: object::new(ctx),
+        allowlist_id,
+    };
+
+    // Auto-add owner as member
+    df::add(
+        &mut allowlist.id,
+        owner,
+        MemberEntry {
+            is_allowed: true,
+            added_at: tx_context::epoch(ctx),
+            added_by: owner,
+        },
+    );
+    allowlist.member_count = 1;
+    allowlist.updated_at = tx_context::epoch(ctx);
 
     event::emit(AllowlistCreated {
         allowlist_id,
-        owner: allowlist.owner,
+        owner,
         name: allowlist.name,
+    });
+
+    event::emit(MemberAdded {
+        allowlist_id,
+        member: owner,
+        added_by: owner,
     });
 
     transfer::share_object(allowlist);
 
-    Cap {
-        id: object::new(ctx),
-        allowlist_id,
-    }
+    cap
 }
 
 entry fun create_allowlist_entry(
@@ -482,6 +553,164 @@ entry fun add_reply_entry(parent_mail: &mut Mail, reply_mail: &Mail, ctx: &tx_co
     add_reply(parent_mail, reply_mail, ctx);
 }
 
+// ===== 3.5. TASK =====
+
+public fun create_task(
+    blob_id: String,
+    assignee: address,
+    deadline: u64,
+    start_time: u64,
+    allowlist: &mut Allowlist,
+    ctx: &mut tx_context::TxContext,
+): Task {
+    let creator = tx_context::sender(ctx);
+
+    assert!(string::length(&blob_id) <= MAX_STRING_LENGTH, EStringTooLong);
+    assert!(is_member(allowlist, creator), ENotMember);
+    assert!(is_member(allowlist, assignee), ENotMember);
+
+    // Validate time: if both start_time and deadline are set (> 0), start_time must be before deadline
+    if (start_time > 0 && deadline > 0) {
+        assert!(start_time < deadline, EInvalidTime);
+    };
+
+    let task = Task {
+        id: object::new(ctx),
+        creator,
+        assignee,
+        blob_id,
+        status: TASK_STATUS_TODO,
+        deleted: false,
+        deadline,
+        start_time,
+        allowlist_id: object::id(allowlist),
+        created_at: tx_context::epoch(ctx),
+        updated_at: tx_context::epoch(ctx),
+    };
+
+    let task_id = object::id(&task);
+    allowlist.task_count = allowlist.task_count + 1;
+    df::add(&mut allowlist.id, task_id, true);
+
+    event::emit(TaskCreated {
+        task_id,
+        creator,
+        assignee,
+        allowlist_id: object::id(allowlist),
+    });
+
+    task
+}
+
+entry fun create_task_entry(
+    blob_id: String,
+    assignee: address,
+    deadline: u64,
+    start_time: u64,
+    allowlist: &mut Allowlist,
+    ctx: &mut tx_context::TxContext,
+) {
+    let task = create_task(blob_id, assignee, deadline, start_time, allowlist, ctx);
+    transfer::share_object(task);
+}
+
+public fun update_task_status(task: &mut Task, new_status: u8, ctx: &mut tx_context::TxContext) {
+    let updater = tx_context::sender(ctx);
+    assert!(updater == task.creator || updater == task.assignee, ENoAccess);
+    assert!(
+        new_status == TASK_STATUS_TODO || new_status == TASK_STATUS_IN_PROGRESS || new_status == TASK_STATUS_DONE,
+        EInvalidStatus,
+    );
+
+    task.status = new_status;
+    task.updated_at = tx_context::epoch(ctx);
+
+    // Set start_time when task moves to IN_PROGRESS for the first time
+    if (new_status == TASK_STATUS_IN_PROGRESS && task.start_time == 0) {
+        task.start_time = tx_context::epoch(ctx);
+    };
+
+    event::emit(TaskUpdated {
+        task_id: object::id(task),
+        updater,
+        new_status,
+        updated_at: task.updated_at,
+    });
+}
+
+entry fun update_task_status_entry(
+    task: &mut Task,
+    new_status: u8,
+    ctx: &mut tx_context::TxContext,
+) {
+    update_task_status(task, new_status, ctx);
+}
+
+public fun delete_task(
+    task: &mut Task,
+    allowlist: &mut Allowlist,
+    ctx: &mut tx_context::TxContext,
+) {
+    let deleter = tx_context::sender(ctx);
+    assert!(deleter == task.creator || deleter == allowlist.owner, ENotOwner);
+    assert!(!task.deleted, EDuplicate); // Already deleted
+
+    task.deleted = true;
+    task.updated_at = tx_context::epoch(ctx);
+
+    // Update allowlist
+    allowlist.task_count = allowlist.task_count - 1;
+    df::remove<object::ID, bool>(&mut allowlist.id, object::id(task));
+
+    event::emit(TaskDeleted {
+        task_id: object::id(task),
+        deleter,
+        deleted_at: task.updated_at,
+    });
+}
+
+entry fun delete_task_entry(
+    task: &mut Task,
+    allowlist: &mut Allowlist,
+    ctx: &mut tx_context::TxContext,
+) {
+    delete_task(task, allowlist, ctx);
+}
+
+public fun edit_task(
+    task: &mut Task,
+    allowlist: &Allowlist,
+    new_blob_id: String,
+    new_assignee: address,
+    ctx: &mut tx_context::TxContext,
+) {
+    let editor = tx_context::sender(ctx);
+    assert!(editor == task.creator || editor == allowlist.owner, ENotOwner);
+    assert!(!task.deleted, EDuplicate);
+
+    task.blob_id = new_blob_id;
+    task.assignee = new_assignee;
+    task.updated_at = tx_context::epoch(ctx);
+
+    event::emit(TaskEdited {
+        task_id: object::id(task),
+        editor,
+        new_blob_id,
+        new_assignee,
+        edited_at: task.updated_at,
+    });
+}
+
+entry fun edit_task_entry(
+    task: &mut Task,
+    allowlist: &Allowlist,
+    new_blob_id: String,
+    new_assignee: address,
+    ctx: &mut tx_context::TxContext,
+) {
+    edit_task(task, allowlist, new_blob_id, new_assignee, ctx);
+}
+
 // ===== 4. SEAL IBE =====
 
 public fun namespace(allowlist: &Allowlist): vector<u8> {
@@ -548,6 +777,10 @@ public fun get_allowlist_member_count(allowlist: &Allowlist): u64 {
     allowlist.member_count
 }
 
+public fun get_allowlist_task_count(allowlist: &Allowlist): u64 {
+    allowlist.task_count
+}
+
 public fun get_mail_sender(mail: &Mail): address {
     mail.sender
 }
@@ -570,6 +803,46 @@ public fun get_mail_reply_count(mail: &Mail): u64 {
 
 public fun get_mail_timestamp(mail: &Mail): u64 {
     mail.timestamp
+}
+
+public fun get_task_creator(task: &Task): address {
+    task.creator
+}
+
+public fun get_task_assignee(task: &Task): address {
+    task.assignee
+}
+
+public fun get_task_blob_id(task: &Task): String {
+    task.blob_id
+}
+
+public fun get_task_status(task: &Task): u8 {
+    task.status
+}
+
+public fun get_task_allowlist_id(task: &Task): object::ID {
+    task.allowlist_id
+}
+
+public fun get_task_created_at(task: &Task): u64 {
+    task.created_at
+}
+
+public fun get_task_updated_at(task: &Task): u64 {
+    task.updated_at
+}
+
+public fun get_task_deleted(task: &Task): bool {
+    task.deleted
+}
+
+public fun get_task_deadline(task: &Task): u64 {
+    task.deadline
+}
+
+public fun get_task_start_time(task: &Task): u64 {
+    task.start_time
 }
 
 // ===== 6. ADMIN =====
@@ -602,6 +875,7 @@ public fun new_allowlist_for_testing(ctx: &mut tx_context::TxContext): Allowlist
         name: string::utf8(b"Test"),
         description: string::utf8(b"Test"),
         member_count: 0,
+        task_count: 0,
         created_at: 0,
         updated_at: 0,
     }
@@ -629,6 +903,7 @@ public fun destroy_allowlist_for_testing(allowlist: Allowlist) {
         name: _,
         description: _,
         member_count: _,
+        task_count: _,
         created_at: _,
         updated_at: _,
     } = allowlist;
@@ -652,5 +927,41 @@ public fun destroy_mail_for_testing(mail: Mail) {
         timestamp: _,
         reply_count: _,
     } = mail;
+    object::delete(id);
+}
+
+#[test_only]
+public fun new_task_for_testing(ctx: &mut tx_context::TxContext): Task {
+    let dummy_id = object::id_from_address(@0x0);
+    Task {
+        id: object::new(ctx),
+        creator: tx_context::sender(ctx),
+        assignee: tx_context::sender(ctx),
+        blob_id: string::utf8(b"test_blob_id"),
+        status: TASK_STATUS_TODO,
+        deleted: false,
+        deadline: 0,
+        start_time: 0,
+        allowlist_id: dummy_id,
+        created_at: 0,
+        updated_at: 0,
+    }
+}
+
+#[test_only]
+public fun destroy_task_for_testing(task: Task) {
+    let Task {
+        id,
+        creator: _,
+        assignee: _,
+        blob_id: _,
+        status: _,
+        deleted: _,
+        deadline: _,
+        start_time: _,
+        allowlist_id: _,
+        created_at: _,
+        updated_at: _,
+    } = task;
     object::delete(id);
 }

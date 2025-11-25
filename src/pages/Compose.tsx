@@ -296,15 +296,13 @@ Example output format:
       // For each recipient, check if they have blocked the current user
       for (const recipientAddress of recipientAddresses) {
         try {
-          const recipientProfile = await suiMailService.getUserProfile(
+          const recipientProfileId = await suiMailService.getUserProfile(
             recipientAddress
           );
-          if (recipientProfile && recipientProfile.data) {
+          if (recipientProfileId) {
             // Get recipient's blacklist and check if current user is in it
             const recipientBlockedUsers =
-              await suiMailService.getBlacklistedUsers(
-                recipientProfile.data.objectId
-              );
+              await suiMailService.getBlacklistedUsers(recipientProfileId);
 
             if (
               recipientBlockedUsers.some(

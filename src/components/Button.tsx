@@ -19,7 +19,7 @@ const Button = ({
     secondary:
       "bg-white text-black hover:bg-gray-50 shadow-sm border border-gray-200",
     outline:
-      "bg-white text-black border-[2px] border-black hover:bg-black hover:text-white hover:border-black",
+      "bg-white text-black border-[2px] border-black hover:bg-black hover:text-white hover:border-black"
   };
 
   return (
